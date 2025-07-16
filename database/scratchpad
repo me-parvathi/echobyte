@@ -1,0 +1,2 @@
+CREATE USER 'echobyte_rw'@'localhost' IDENTIFIED BY 'echobyte';
+GRANT ALL PRIVILEGES ON echobyte.* TO 'echobyte_rw'@'localhost';

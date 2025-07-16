@@ -1,0 +1,16 @@
+           +---------------------+
+           |   React Frontend    |
+           | (Vite, Hosted on Azure SWA) |
+           +----------+----------+
+                      |
+                      v
+           +----------+----------+
+           |      FastAPI Backend       |
+           | - Auth (JWT)               |
+           | - API Routes               |
+           | - ORM (SQLAlchemy)         |
+           +--+----------+-----------+-+
+              |          |           |
+              v          v           v
+     Azure SQL DB   Azure Blob   Redis (optional)
+     (user data)    (images)     (sessions/cache)

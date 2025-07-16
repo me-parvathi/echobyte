@@ -1,0 +1,890 @@
+-- 1. Core lookup tables
+
+CREATE DATABASE IF NOT EXISTS echobyte;
+USE echobyte;
+CREATE TABLE IF NOT EXISTS location (
+  location_id     INT            AUTO_INCREMENT PRIMARY KEY,
+  name            VARCHAR(100)   NOT NULL UNIQUE,     -- e.g. "HQ – Seattle", "Remote – NY Home"
+  address_line1   VARCHAR(200)   NOT NULL,
+  address_line2   VARCHAR(200),
+  city            VARCHAR(100)   NOT NULL,
+  state           VARCHAR(100)   NOT NULL,
+  postal_code     VARCHAR(20)    NOT NULL,
+  country         VARCHAR(100)   NOT NULL,
+  timezone        VARCHAR(50)    NOT NULL,            -- e.g. "America/Los_Angeles"
+  created_at      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP
+                     ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- department -------------------------------------------
+CREATE TABLE IF NOT EXISTS department (
+  department_id       INT AUTO_INCREMENT PRIMARY KEY,
+  parent_department_id INT NULL,
+  name                VARCHAR(100) NOT NULL UNIQUE,
+  description         TEXT,
+  created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                               ON UPDATE CURRENT_TIMESTAMP,
+
+  CONSTRAINT fk_department_parent
+    FOREIGN KEY (parent_department_id)
+    REFERENCES department(department_id)
+    ON UPDATE CASCADE
+    ON DELETE SET NULL,
+
+  UNIQUE KEY uq_parent_name (parent_department_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS team (
+  team_id         INT            AUTO_INCREMENT PRIMARY KEY,
+  department_id   INT            NOT NULL,
+  name            VARCHAR(100)   NOT NULL,
+  headquarters_location_id INT   NOT NULL,            -- where the team is “based”
+  
+  created_at      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP
+                     ON UPDATE CURRENT_TIMESTAMP,
+  
+  FOREIGN KEY (department_id)
+    REFERENCES department(department_id)
+    ON UPDATE CASCADE
+    ON DELETE RESTRICT,
+  FOREIGN KEY (headquarters_location_id)
+    REFERENCES location(location_id)
+    ON UPDATE CASCADE
+    ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS asset_type (
+  asset_type_id   INT            AUTO_INCREMENT PRIMARY KEY,
+  name            VARCHAR(100)   NOT NULL UNIQUE,     -- e.g. "Laptop", "HDMI Cable"
+  description     TEXT,
+  created_at      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 2. Employee profile
+
+/* ──────────────────────────────────────────────
+   1. Lookup tables
+   ────────────────────────────────────────────── */
+
+/* Gender reference */
+CREATE TABLE IF NOT EXISTS gender (
+  gender_id   INT AUTO_INCREMENT PRIMARY KEY,
+  code        VARCHAR(20) NOT NULL UNIQUE,   -- 'male', 'female', …
+  description VARCHAR(100)                   -- optional display text
+);
+
+INSERT INTO gender (code, description) VALUES
+  ('male',        'Male'),
+  ('female',      'Female'),
+  ('non-binary',  'Non-binary'),
+  ('other',       'Other');
+
+/* Employment-status reference */
+CREATE TABLE IF NOT EXISTS employment_status (
+  status_id   INT AUTO_INCREMENT PRIMARY KEY,
+  code        VARCHAR(20) NOT NULL UNIQUE,   -- 'active', 'on_leave', …
+  description VARCHAR(100)
+);
+
+INSERT INTO employment_status (code, description) VALUES
+  ('active',      'Currently employed and working'),
+  ('on_leave',    'On approved leave'),
+  ('terminated',  'Employment ended (termination)'),
+  ('retired',     'Retired from the company');
+
+/*
+   If you want “active” to be the implicit default for new employees,
+   record its PK (here, 1) and use it in the column default below.
+*/
+
+/* ============================================================
+   EMPLOYEE – master profile (with soft-delete support)
+   ============================================================ */
+CREATE TABLE IF NOT EXISTS employee (
+  /* ─────────── Primary key ─────────── */
+  employee_id           INT AUTO_INCREMENT PRIMARY KEY,
+
+  /* ─────────── Organisation links ─────────── */
+  team_id               INT  NOT NULL,           -- current team
+  manager_id            INT  NULL,               -- line manager (self-reference)
+  work_location_id      INT  NOT NULL,           -- office / remote site
+
+  /* ─────────── Personal details ─────────── */
+  first_name            VARCHAR(50)  NOT NULL,
+  last_name             VARCHAR(50)  NOT NULL,
+  email                 VARCHAR(150) NOT NULL,
+  phone_primary         VARCHAR(20),
+  phone_secondary       VARCHAR(20),
+
+  date_of_birth         DATE         NOT NULL,
+  date_of_joining       DATE         NOT NULL,
+
+  gender_id             INT          NULL,       -- FK → gender
+  pronouns              VARCHAR(50),
+
+  employment_status_id  INT  NOT NULL DEFAULT 1, -- 1 = ‘active’
+
+  /* ─────────── Soft-delete metadata ─────────── */
+  is_deleted            BOOLEAN  NOT NULL DEFAULT FALSE,
+  deleted_at            DATETIME NULL,
+  deleted_by            INT      NULL,           -- FK → employee (who performed delete)
+
+  /* ─────────── Audit ─────────── */
+  created_at            DATETIME  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at            DATETIME  NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                   ON UPDATE CURRENT_TIMESTAMP,
+
+  /* ─────────── Foreign keys ─────────── */
+  CONSTRAINT fk_employee_team
+      FOREIGN KEY (team_id)
+      REFERENCES team(team_id)
+      ON UPDATE CASCADE
+      ON DELETE RESTRICT,
+
+  CONSTRAINT fk_employee_manager
+      FOREIGN KEY (manager_id)
+      REFERENCES employee(employee_id)
+      ON UPDATE CASCADE
+      ON DELETE SET NULL,
+
+  CONSTRAINT fk_employee_location
+      FOREIGN KEY (work_location_id)
+      REFERENCES location(location_id)
+      ON UPDATE CASCADE
+      ON DELETE RESTRICT,
+
+  CONSTRAINT fk_employee_gender
+      FOREIGN KEY (gender_id)
+      REFERENCES gender(gender_id)
+      ON UPDATE CASCADE
+      ON DELETE SET NULL,
+
+  CONSTRAINT fk_employee_status
+      FOREIGN KEY (employment_status_id)
+      REFERENCES employment_status(status_id)
+      ON UPDATE CASCADE
+      ON DELETE RESTRICT,
+
+  CONSTRAINT fk_employee_deleted_by
+      FOREIGN KEY (deleted_by)
+      REFERENCES employee(employee_id)
+      ON UPDATE CASCADE
+      ON DELETE SET NULL,
+
+  /* ─────────── Uniqueness (active rows only) ─────────── */
+  UNIQUE KEY uq_email_active (email, is_deleted)
+  -- add similar filtered-by-flag composites for other columns that
+  -- must stay unique among *non-deleted* employees (e.g., phone numbers)
+);
+
+
+-- 3. Employee addresses (home, mailing, etc.)
+
+/* ──────────────────────────────────────────────
+   1. Lookup table for address types
+   ────────────────────────────────────────────── */
+CREATE TABLE IF NOT EXISTS address_type (
+  address_type_id INT AUTO_INCREMENT PRIMARY KEY,
+  code            VARCHAR(20) NOT NULL UNIQUE,   -- 'home', 'mailing', 'other'
+  description     VARCHAR(100)
+);
+
+INSERT INTO address_type (code, description) VALUES
+  ('home',    'Primary residence'),
+  ('mailing', 'Postal / mailing address'),
+  ('other',   'Other address');
+
+/*
+   If “home” should be the implicit default for new rows,
+   note its PK (here, 1) and use that in the DEFAULT below.
+*/
+
+/* ──────────────────────────────────────────────
+   2. Employee-address table (no inline ENUM)
+   ────────────────────────────────────────────── */
+CREATE TABLE IF NOT EXISTS employee_address (
+  address_id        INT AUTO_INCREMENT PRIMARY KEY,
+  employee_id       INT NOT NULL,
+  address_type_id   INT NOT NULL DEFAULT 1,       -- FK → address_type
+
+  address_line1     VARCHAR(200) NOT NULL,
+  address_line2     VARCHAR(200),
+  city              VARCHAR(100) NOT NULL,
+  state             VARCHAR(100) NOT NULL,
+  postal_code       VARCHAR(20)  NOT NULL,
+  country           VARCHAR(100) NOT NULL,
+
+  created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                             ON UPDATE CURRENT_TIMESTAMP,
+
+  /* ── foreign keys ────────────────────────── */
+  FOREIGN KEY (employee_id)
+      REFERENCES employee(employee_id)
+      ON UPDATE CASCADE
+      ON DELETE CASCADE,
+  FOREIGN KEY (address_type_id)
+      REFERENCES address_type(address_type_id)
+      ON UPDATE CASCADE
+      ON DELETE RESTRICT
+);
+
+
+-- 4. Emergency contacts
+
+CREATE TABLE IF NOT EXISTS emergency_contact (
+  contact_id      INT            AUTO_INCREMENT PRIMARY KEY,
+  employee_id     INT            NOT NULL,
+  name            VARCHAR(100)   NOT NULL,
+  relationship    VARCHAR(50)    NOT NULL,            -- e.g. "Spouse", "Parent"
+  phone           VARCHAR(20)    NOT NULL,
+  email           VARCHAR(150),
+  created_at      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (employee_id)
+    REFERENCES employee(employee_id)
+    ON UPDATE CASCADE
+    ON DELETE CASCADE
+);
+
+-- 5. Assets and assignment history
+
+/* ──────────────────────────────────────────────
+   1. Lookup table for asset life-cycle states
+   ────────────────────────────────────────────── */
+CREATE TABLE IF NOT EXISTS asset_status (
+  asset_status_id INT AUTO_INCREMENT PRIMARY KEY,
+  code            VARCHAR(30) NOT NULL UNIQUE,   -- 'in_stock', 'assigned', …
+  description     VARCHAR(100)
+);
+
+INSERT INTO asset_status (code, description) VALUES
+  ('in_stock',    'Available; not yet assigned'),
+  ('assigned',    'Issued to an employee'),
+  ('maintenance', 'Under repair / diagnostics'),
+  ('retired',     'Removed from service');
+
+/*
+   Keep track of the PK for “in_stock” (assumed to be 1 after the insert)
+   so we can reference it as the DEFAULT below.
+*/
+
+/* ──────────────────────────────────────────────
+   2. Asset table (no inline ENUM)
+   ────────────────────────────────────────────── */
+CREATE TABLE IF NOT EXISTS asset (
+  asset_id          INT AUTO_INCREMENT PRIMARY KEY,
+  asset_type_id     INT  NOT NULL,
+  mac_address       VARCHAR(100) UNIQUE,          -- allow NULL for non-network items
+  serial_number     VARCHAR(100) UNIQUE,
+  purchase_date     DATE,
+  purchase_cost     DECIMAL(10,2),
+
+  asset_status_id   INT NOT NULL DEFAULT 1,       -- FK → asset_status (‘in_stock’)
+
+  created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                               ON UPDATE CURRENT_TIMESTAMP,
+
+  /* ── foreign keys ────────────────────────── */
+  FOREIGN KEY (asset_type_id)
+      REFERENCES asset_type(asset_type_id)
+      ON UPDATE CASCADE
+      ON DELETE RESTRICT,
+  FOREIGN KEY (asset_status_id)
+      REFERENCES asset_status(asset_status_id)
+      ON UPDATE CASCADE
+      ON DELETE RESTRICT
+);
+
+
+CREATE TABLE IF NOT EXISTS employee_asset_assignment (
+  assignment_id   INT            AUTO_INCREMENT PRIMARY KEY,
+  employee_id     INT            NOT NULL,
+  asset_id        INT            NOT NULL,
+  assigned_date   DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  returned_date   DATETIME       NULL,                -- NULL until returned
+  notes           TEXT,
+
+  FOREIGN KEY (employee_id)
+    REFERENCES employee(employee_id)
+    ON UPDATE CASCADE
+    ON DELETE CASCADE,
+  FOREIGN KEY (asset_id)
+    REFERENCES asset(asset_id)
+    ON UPDATE CASCADE
+    ON DELETE RESTRICT
+);
+
+-- 1. Lookup table for leave types (vacation, sick, parental…)
+CREATE TABLE IF NOT EXISTS leave_type (
+  leave_type_id   INT            AUTO_INCREMENT PRIMARY KEY,
+  code            VARCHAR(50)    NOT NULL UNIQUE,    -- e.g. 'VAC', 'SICK'
+  description     VARCHAR(200)   NOT NULL,
+  max_days_annually INT          NOT NULL DEFAULT 0,  -- policy cap
+  created_at      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP
+                     ON UPDATE CURRENT_TIMESTAMP
+);
+
+--
+-- Data for table `leave_type`
+--
+-- Assumes leave_type_id will be auto-incremented starting from 1.
+-- The faker script will reference these IDs (1-6).
+--
+
+INSERT INTO leave_type (code, description, max_days_annually) VALUES
+('VAC', 'Annual Vacation Leave', 20),
+('SICK', 'Sick Leave', 10),
+('PARENTAL', 'Parental Leave (Maternity/Paternity)', 60),
+('BEREAVEMENT', 'Bereavement Leave', 5),
+('JURY', 'Jury Duty Leave', 10),
+('UNPAID', 'Unpaid Leave of Absence', 30);
+-- 2. Leave requests
+/* ──────────────────────────────────────────────
+   1. Lookup table for leave-request workflow states
+   ────────────────────────────────────────────── */
+CREATE TABLE IF NOT EXISTS leave_request_status (
+  leave_status_id INT AUTO_INCREMENT PRIMARY KEY,
+  code            VARCHAR(20) NOT NULL UNIQUE,      -- 'pending', 'approved', 'rejected'
+  description     VARCHAR(100)
+);
+
+INSERT INTO leave_request_status (code, description) VALUES
+  ('pending',  'Awaiting manager decision'),
+  ('approved', 'Approved by manager'),
+  ('rejected', 'Rejected by manager');
+
+/*
+   “pending” will be row 1 after the INSERT, so we can point the
+   foreign-key column at it as the DEFAULT below.
+*/
+
+/* ──────────────────────────────────────────────
+   2. Leave-request table (no inline ENUM)
+   ────────────────────────────────────────────── */
+CREATE TABLE IF NOT EXISTS leave_request (
+  request_id        INT AUTO_INCREMENT PRIMARY KEY,
+  employee_id       INT NOT NULL,                  -- who’s asking
+  leave_type_id     INT NOT NULL,
+  manager_id        INT NOT NULL,                  -- approver
+
+  start_date        DATE NOT NULL,
+  end_date          DATE NOT NULL,
+  days_requested    DECIMAL(5,2) NOT NULL,         -- supports half-days
+  reason            TEXT NULL,
+
+  leave_status_id   INT NOT NULL DEFAULT 1,        -- FK → leave_request_status (‘pending’)
+  decision_date     DATETIME NULL,                 -- approval/rejection timestamp
+  decision_notes    TEXT NULL,
+
+  created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                               ON UPDATE CURRENT_TIMESTAMP,
+
+  /* ── foreign keys ────────────────────────── */
+  FOREIGN KEY (employee_id)
+      REFERENCES employee(employee_id)
+      ON UPDATE CASCADE
+      ON DELETE CASCADE,
+  FOREIGN KEY (manager_id)
+      REFERENCES employee(employee_id)
+      ON UPDATE CASCADE
+      ON DELETE RESTRICT,
+  FOREIGN KEY (leave_type_id)
+      REFERENCES leave_type(leave_type_id)
+      ON UPDATE CASCADE
+      ON DELETE RESTRICT,
+  FOREIGN KEY (leave_status_id)
+      REFERENCES leave_request_status(leave_status_id)
+      ON UPDATE CASCADE
+      ON DELETE RESTRICT
+);
+
+
+-- 3. (Optional) Audit/history of status changes:
+/* ──────────────────────────────────────────────
+   Leave-request status-change audit trail
+   ────────────────────────────────────────────── */
+CREATE TABLE IF NOT EXISTS leave_request_history (
+  history_id        INT AUTO_INCREMENT PRIMARY KEY,
+  request_id        INT NOT NULL,
+
+  changed_by        INT NOT NULL,                 -- the user who made the change
+
+  old_status_id     INT NOT NULL,                 -- FK → leave_request_status
+  new_status_id     INT NOT NULL,                 -- FK → leave_request_status
+
+  change_date       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  notes             TEXT NULL,
+
+  /* ── foreign keys ────────────────────────── */
+  FOREIGN KEY (request_id)
+      REFERENCES leave_request(request_id)
+      ON UPDATE CASCADE
+      ON DELETE CASCADE,
+
+  FOREIGN KEY (changed_by)
+      REFERENCES employee(employee_id)
+      ON UPDATE CASCADE
+      ON DELETE RESTRICT,
+
+  FOREIGN KEY (old_status_id)
+      REFERENCES leave_request_status(leave_status_id)
+      ON UPDATE CASCADE
+      ON DELETE RESTRICT,
+
+  FOREIGN KEY (new_status_id)
+      REFERENCES leave_request_status(leave_status_id)
+      ON UPDATE CASCADE
+      ON DELETE RESTRICT
+);
+
+
+-- 1. The feedback “ticket” itself (always anonymous)
+/* ──────────────────────────────────────────────
+   1. Lookup table for feedback categories
+   ────────────────────────────────────────────── */
+CREATE TABLE IF NOT EXISTS feedback_category (
+  category_id  INT AUTO_INCREMENT PRIMARY KEY,
+  code         VARCHAR(30) NOT NULL UNIQUE,      -- 'general', 'policy', …
+  description  VARCHAR(100)
+);
+
+INSERT INTO feedback_category (code, description) VALUES
+  ('general', 'General feedback or suggestion'),
+  ('policy',  'Feedback related to company policies'),
+  ('process', 'Process-improvement suggestion'),
+  ('other',   'Anything else');
+
+/* “general” is row 1 after the INSERT. */
+
+/* ──────────────────────────────────────────────
+   2. Lookup table for ticket workflow states
+   ────────────────────────────────────────────── */
+CREATE TABLE IF NOT EXISTS feedback_ticket_status (
+  status_id    INT AUTO_INCREMENT PRIMARY KEY,
+  code         VARCHAR(30) NOT NULL UNIQUE,      -- 'open', 'in_progress', 'closed'
+  description  VARCHAR(100)
+);
+
+INSERT INTO feedback_ticket_status (code, description) VALUES
+  ('open',         'Ticket logged; awaiting action'),
+  ('in_progress',  'Someone is working on it'),
+  ('closed',       'Issue resolved / ticket closed');
+
+/* “open” is row 1. */
+
+/* ──────────────────────────────────────────────
+   3. Feedback-ticket master table (no inline ENUMs)
+   ────────────────────────────────────────────── */
+CREATE TABLE IF NOT EXISTS feedback_ticket (
+  ticket_id        INT AUTO_INCREMENT PRIMARY KEY,
+  title            VARCHAR(200) NOT NULL,          -- brief summary
+  content          TEXT NOT NULL,                  -- full feedback text
+
+  category_id      INT NOT NULL DEFAULT 1,         -- FK → feedback_category (‘general’)
+  is_anonymous     BOOLEAN NOT NULL DEFAULT TRUE,
+
+  status_id        INT NOT NULL DEFAULT 1,         -- FK → feedback_ticket_status (‘open’)
+
+  created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                              ON UPDATE CURRENT_TIMESTAMP,
+
+  /* ── foreign keys ────────────────────────── */
+  FOREIGN KEY (category_id)
+      REFERENCES feedback_category(category_id)
+      ON UPDATE CASCADE
+      ON DELETE RESTRICT,
+
+  FOREIGN KEY (status_id)
+      REFERENCES feedback_ticket_status(status_id)
+      ON UPDATE CASCADE
+      ON DELETE RESTRICT
+);
+
+
+-- 2. Who should receive each ticket
+--    (multiple recipients per ticket; links to employee rows for HR, managers, execs)
+/* ──────────────────────────────────────────────
+   1. Lookup table for recipient roles
+   ────────────────────────────────────────────── */
+CREATE TABLE IF NOT EXISTS feedback_recipient_role (
+  role_id      INT AUTO_INCREMENT PRIMARY KEY,
+  code         VARCHAR(20) NOT NULL UNIQUE,      -- 'hr', 'manager', 'executive'
+  description  VARCHAR(100)
+);
+
+INSERT INTO feedback_recipient_role (code, description) VALUES
+  ('hr',        'Human-resources recipient'),
+  ('manager',   'Direct or dotted-line manager'),
+  ('executive', 'Leadership / executive recipient');
+
+/* “hr” will be row 1 after the INSERT. */
+
+/* ──────────────────────────────────────────────
+   2. Feedback-recipient link table (no inline ENUM)
+   ────────────────────────────────────────────── */
+CREATE TABLE IF NOT EXISTS feedback_recipient (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  ticket_id      INT NOT NULL,
+  employee_id    INT NOT NULL,                 -- the recipient
+  role_id        INT NOT NULL DEFAULT 1,       -- FK → feedback_recipient_role (‘hr’)
+
+  notified_at    DATETIME NULL,                -- notification sent
+  read_at        DATETIME NULL,                -- recipient viewed
+
+  /* ── foreign keys ────────────────────────── */
+  FOREIGN KEY (ticket_id)
+      REFERENCES feedback_ticket(ticket_id)
+      ON UPDATE CASCADE
+      ON DELETE CASCADE,
+
+  FOREIGN KEY (employee_id)
+      REFERENCES employee(employee_id)
+      ON UPDATE CASCADE
+      ON DELETE RESTRICT,
+
+  FOREIGN KEY (role_id)
+      REFERENCES feedback_recipient_role(role_id)
+      ON UPDATE CASCADE
+      ON DELETE RESTRICT
+);
+
+
+-- 3. (Optional) Recipient responses or notes back on the ticket
+CREATE TABLE IF NOT EXISTS feedback_response (
+  response_id     INT            AUTO_INCREMENT PRIMARY KEY,
+  ticket_id       INT            NOT NULL,
+  responder_id    INT            NOT NULL,                       -- HR/manager/exec replying
+  response_text   TEXT           NOT NULL,
+  created_at      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  FOREIGN KEY (ticket_id)
+    REFERENCES feedback_ticket(ticket_id)
+    ON UPDATE CASCADE
+    ON DELETE CASCADE,
+  FOREIGN KEY (responder_id)
+    REFERENCES employee(employee_id)
+    ON UPDATE CASCADE
+    ON DELETE RESTRICT
+);
+
+-- 4. (Optional) Full status-change audit trail
+/* ──────────────────────────────────────────────
+   Feedback-ticket status-change audit trail
+   ────────────────────────────────────────────── */
+CREATE TABLE IF NOT EXISTS feedback_status_history (
+  history_id       INT AUTO_INCREMENT PRIMARY KEY,
+  ticket_id        INT NOT NULL,
+
+  changed_by       INT NULL,                    -- NULL = system update
+
+  old_status_id    INT NOT NULL,                -- FK → feedback_ticket_status
+  new_status_id    INT NOT NULL,                -- FK → feedback_ticket_status
+
+  change_date      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  notes            TEXT NULL,
+
+  /* ── foreign keys ────────────────────────── */
+  FOREIGN KEY (ticket_id)
+      REFERENCES feedback_ticket(ticket_id)
+      ON UPDATE CASCADE
+      ON DELETE CASCADE,
+
+  FOREIGN KEY (changed_by)
+      REFERENCES employee(employee_id)
+      ON UPDATE CASCADE
+      ON DELETE SET NULL,
+
+  FOREIGN KEY (old_status_id)
+      REFERENCES feedback_ticket_status(status_id)
+      ON UPDATE CASCADE
+      ON DELETE RESTRICT,
+
+  FOREIGN KEY (new_status_id)
+      REFERENCES feedback_ticket_status(status_id)
+      ON UPDATE CASCADE
+      ON DELETE RESTRICT
+);
+
+
+-- 1. Timesheet period definitions (e.g. weekly, bi-weekly)
+/* ──────────────────────────────────────────────
+   1. Lookup table for timesheet workflow states
+   ────────────────────────────────────────────── */
+CREATE TABLE IF NOT EXISTS timesheet_status (
+  timesheet_status_id INT AUTO_INCREMENT PRIMARY KEY,
+  code                VARCHAR(20) NOT NULL UNIQUE,   -- 'draft', 'submitted', …
+  description         VARCHAR(100)
+);
+
+INSERT INTO timesheet_status (code, description) VALUES
+  ('draft',     'User is still editing the period'),
+  ('submitted', 'Employee has submitted for approval'),
+  ('approved',  'Manager has approved'),
+  ('rejected',  'Manager has rejected / needs changes');
+
+/* After the INSERT, “draft” will be row 1. */
+
+/* ──────────────────────────────────────────────
+   2. Timesheet-period table (no inline ENUM)
+   ────────────────────────────────────────────── */
+CREATE TABLE IF NOT EXISTS timesheet_period (
+  period_id         INT AUTO_INCREMENT PRIMARY KEY,
+  employee_id       INT NOT NULL,                  -- whose period this is
+  period_start      DATE NOT NULL,                 -- e.g., Monday
+  period_end        DATE NOT NULL,                 -- e.g., following Sunday
+
+  submitted_at      DATETIME NULL,                 -- when employee submits
+  approved_by       INT NULL,                      -- manager who approved
+  approved_at       DATETIME NULL,
+
+  timesheet_status_id INT NOT NULL DEFAULT 1,      -- FK → timesheet_status (‘draft’)
+
+  total_hours       DECIMAL(5,2) NULL,
+  overtime_hours    DECIMAL(5,2) NULL,
+
+  created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                               ON UPDATE CURRENT_TIMESTAMP,
+
+  /* ── foreign keys ────────────────────────── */
+  FOREIGN KEY (employee_id)
+      REFERENCES employee(employee_id)
+      ON UPDATE CASCADE
+      ON DELETE CASCADE,
+
+  FOREIGN KEY (approved_by)
+      REFERENCES employee(employee_id)
+      ON UPDATE CASCADE
+      ON DELETE SET NULL,
+
+  FOREIGN KEY (timesheet_status_id)
+      REFERENCES timesheet_status(timesheet_status_id)
+      ON UPDATE CASCADE
+      ON DELETE RESTRICT
+);
+
+/* (Optional but recommended)
+   Ensure an employee can have only one period per start date. */
+ALTER TABLE timesheet_period
+  ADD UNIQUE KEY unique_employee_period (employee_id, period_start);
+
+-- 2. Daily time entries
+CREATE TABLE IF NOT EXISTS timesheet_entry (
+  entry_id        INT            AUTO_INCREMENT PRIMARY KEY,
+  period_id       INT            NOT NULL,                       -- groups entries into a pay period
+  work_date       DATE           NOT NULL,
+  start_time      TIME           NOT NULL,
+  end_time        TIME           NOT NULL,
+  break_minutes   SMALLINT       NOT NULL DEFAULT 0,             -- total break time in minutes
+  worked_hours    DECIMAL(4,2)   AS (
+                     ROUND(
+                       (TIME_TO_SEC(end_time) - TIME_TO_SEC(start_time)
+                        - break_minutes * 60
+                       )/3600
+                     ,2)
+                   ) STORED,
+  is_overtime     BOOLEAN        NOT NULL DEFAULT FALSE,         -- flagged by your business rules
+  notes           VARCHAR(255)   NULL,
+  created_at      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  FOREIGN KEY (period_id)
+    REFERENCES timesheet_period(period_id)
+    ON UPDATE CASCADE
+    ON DELETE CASCADE,
+
+  UNIQUE(period_id, work_date)   -- one entry per day per period (adjust if you need multiple shifts)
+);
+
+-- 3. Optional: audit log for period status changes
+/* ──────────────────────────────────────────────
+   Timesheet-period status-change audit trail
+   ────────────────────────────────────────────── */
+CREATE TABLE IF NOT EXISTS timesheet_period_history (
+  history_id        INT AUTO_INCREMENT PRIMARY KEY,
+  period_id         INT NOT NULL,
+
+  changed_by        INT NULL,                       -- NULL = system update
+
+  old_status_id     INT NOT NULL,                   -- FK → timesheet_status
+  new_status_id     INT NOT NULL,                   -- FK → timesheet_status
+
+  change_date       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  note              VARCHAR(255) NULL,
+
+  /* ── foreign keys ────────────────────────── */
+  FOREIGN KEY (period_id)
+      REFERENCES timesheet_period(period_id)
+      ON UPDATE CASCADE
+      ON DELETE CASCADE,
+
+  FOREIGN KEY (changed_by)
+      REFERENCES employee(employee_id)
+      ON UPDATE CASCADE
+      ON DELETE SET NULL,
+
+  FOREIGN KEY (old_status_id)
+      REFERENCES timesheet_status(timesheet_status_id)
+      ON UPDATE CASCADE
+      ON DELETE RESTRICT,
+
+  FOREIGN KEY (new_status_id)
+      REFERENCES timesheet_status(timesheet_status_id)
+      ON UPDATE CASCADE
+      ON DELETE RESTRICT
+);
+
+
+-- Projects master list
+/* ──────────────────────────────────────────────
+   1. Lookup table for project life-cycle states
+   ────────────────────────────────────────────── */
+CREATE TABLE IF NOT EXISTS project_status (
+  project_status_id INT AUTO_INCREMENT PRIMARY KEY,
+  code              VARCHAR(20) NOT NULL UNIQUE,   -- 'planning', 'active', …
+  description       VARCHAR(100)
+);
+
+INSERT INTO project_status (code, description) VALUES
+  ('planning',  'Project is being scoped and staffed'),
+  ('active',    'Work is underway'),
+  ('on_hold',   'Temporarily paused'),
+  ('completed', 'Delivered and closed'),
+  ('cancelled', 'Terminated before completion');
+
+/* After the INSERT, “planning” will be row 1. */
+
+/* ──────────────────────────────────────────────
+   2. Project master table (no inline ENUM)
+   ────────────────────────────────────────────── */
+CREATE TABLE IF NOT EXISTS project (
+  project_id         INT AUTO_INCREMENT PRIMARY KEY,
+  name               VARCHAR(150) NOT NULL,
+  code               VARCHAR(50)  NOT NULL UNIQUE,
+  description        TEXT NULL,
+  start_date         DATE NOT NULL,
+  end_date           DATE NULL,
+
+  project_status_id  INT NOT NULL DEFAULT 1,    -- FK → project_status (‘planning’)
+
+  created_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                               ON UPDATE CURRENT_TIMESTAMP,
+
+  FOREIGN KEY (project_status_id)
+      REFERENCES project_status(project_status_id)
+      ON UPDATE CASCADE
+      ON DELETE RESTRICT
+);
+
+
+-- Link projects to departments (many-to-many if needed)
+CREATE TABLE IF NOT EXISTS department_project (
+  department_id   INT            NOT NULL,
+  project_id      INT            NOT NULL,
+  assigned_date   DATE           NOT NULL, -- add default date if needed from application logic
+  PRIMARY KEY (department_id, project_id),
+
+  FOREIGN KEY (department_id)
+    REFERENCES department(department_id)
+    ON UPDATE CASCADE
+    ON DELETE CASCADE,
+  FOREIGN KEY (project_id)
+    REFERENCES project(project_id)
+    ON UPDATE CASCADE
+    ON DELETE CASCADE
+);
+
+-- Link teams to projects (many-to-many)
+CREATE TABLE IF NOT EXISTS team_project (
+  team_id         INT            NOT NULL,
+  project_id      INT            NOT NULL,
+  assigned_date   DATE           NOT NULL, -- add current date as default from application logi,
+  PRIMARY KEY (team_id, project_id),
+
+  FOREIGN KEY (team_id)
+    REFERENCES team(team_id)
+    ON UPDATE CASCADE
+    ON DELETE CASCADE,
+  FOREIGN KEY (project_id)
+    REFERENCES project(project_id)
+    ON UPDATE CASCADE
+    ON DELETE CASCADE
+);
+
+-- (Optional) If you want to track individual contributors outside of team membership…
+CREATE TABLE IF NOT EXISTS project_assignment (
+  assignment_id   INT            AUTO_INCREMENT PRIMARY KEY,
+  project_id      INT            NOT NULL,
+  employee_id     INT            NOT NULL,
+  role            VARCHAR(100)   NULL,        -- e.g. 'Developer','QA','PM'
+  assigned_date   DATE           NOT NULL, -- add default date if needed from application logic
+
+  FOREIGN KEY (project_id)
+    REFERENCES project(project_id)
+    ON UPDATE CASCADE
+    ON DELETE CASCADE,
+  FOREIGN KEY (employee_id)
+    REFERENCES employee(employee_id)
+    ON UPDATE CASCADE
+    ON DELETE CASCADE
+);
+
+
+
+-- Lookup table
+CREATE TABLE IF NOT EXISTS access_role (
+  role_id     INT AUTO_INCREMENT PRIMARY KEY,
+  code        VARCHAR(50) NOT NULL UNIQUE,  -- 'employee', 'manager', etc.
+  description VARCHAR(100)
+);
+
+-- Sample insert
+INSERT INTO access_role (code, description) VALUES
+  ('employee', 'General employee access'),
+  ('manager',  'Manager access'),
+  ('hr',       'HR team access'),
+  ('admin',    'Administrator access');
+
+-- Updated field in document_access
+role_id INT NOT NULL,
+
+-- Add FK
+FOREIGN KEY (role_id) REFERENCES access_role(role_id)
+
+CREATE TABLE hr_document (
+    document_id     INT AUTO_INCREMENT PRIMARY KEY,
+    title           VARCHAR(255) NOT NULL,
+    description     TEXT,
+    category_id     INT NOT NULL,  -- FK to document_category
+    file_path       VARCHAR(500) NOT NULL,
+    uploaded_by     INT NOT NULL,
+    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (uploaded_by) REFERENCES employee(employee_id),
+    FOREIGN KEY (category_id) REFERENCES document_category(category_id)
+);
+
+
+CREATE TABLE document_access (
+    access_id       INT AUTO_INCREMENT PRIMARY KEY,
+    document_id     INT NOT NULL,
+    role_id         INT NOT NULL,  -- FK to access_role
+    can_view        BOOLEAN NOT NULL DEFAULT TRUE,
+    can_edit        BOOLEAN NOT NULL DEFAULT FALSE,
+
+    FOREIGN KEY (document_id) REFERENCES hr_document(document_id) ON DELETE CASCADE,
+    FOREIGN KEY (role_id) REFERENCES access_role(role_id)
+);
+
+
+
+-- CREATE OR REPLACE VIEW employee_active AS
+--   SELECT * FROM employee WHERE is_deleted = FALSE;

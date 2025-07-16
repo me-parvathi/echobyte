@@ -1,0 +1,29 @@
+FROM mcr.microsoft.com/mssql/server:2022-latest
+
+ENV ACCEPT_EULA=Y
+ENV MSSQL_SA_PASSWORD=YourStrong!Passw0rd
+
+USER root
+
+# Install sqlcmd and dependencies using the correct repository for Ubuntu 22.04
+RUN apt-get update && \
+    apt-get install -y curl gnupg && \
+    curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft.gpg && \
+    echo "deb [arch=amd64,arm64,armhf signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/ubuntu/22.04/prod jammy main" > /etc/apt/sources.list.d/mssql-release.list && \
+    apt-get update && \
+    ACCEPT_EULA=Y apt-get install -y mssql-tools18 unixodbc-dev && \
+    echo 'export PATH="$PATH:/opt/mssql-tools18/bin"' >> /etc/bash.bashrc && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+EXPOSE 1433
+
+WORKDIR /setup
+
+COPY setup.sql /setup/setup.sql
+
+RUN chown -R mssql:root /setup
+
+USER mssql
+
+ENV PATH="${PATH}:/opt/mssql-tools18/bin"
