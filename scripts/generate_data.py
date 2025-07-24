@@ -21,6 +21,7 @@ from __future__ import annotations
 import csv, os, random, datetime as dt
 from collections import defaultdict
 from pathlib import Path
+import hashlib
 
 import pandas as pd
 from faker import Faker
@@ -42,7 +43,7 @@ CFG = {
         ("Product",    ["Design", "PM", "Research"]),
     ],
     "teams_per_dept": (1, 3),
-    "n_employees":   800,
+    "n_employees":   765, #changeme
 
     # status mixes (lookup PK → probability)
     "emp_type_mix": {                  # EmploymentTypes
@@ -77,7 +78,7 @@ CFG = {
     },
 
     # IT assets
-    "n_assets":        8000,
+    "n_assets":        8000, #changeme
     "asset_status_mix": {
         "In-Stock":        0.25,
         "Available":       0.25,
@@ -89,7 +90,7 @@ CFG = {
     "assignable_codes": {"In-Stock", "Available", "Assigned"},
 
     # timesheet realism
-    "weeks_of_timesheets": 52,
+    "weeks_of_timesheets": 52, #changeme
     "daily_hours_range": (7, 9),        # before break
     "break_range_min": 30,              # minutes
     "break_range_max": 75,
@@ -123,6 +124,10 @@ def wr(csv_name: str, rows: list[dict]) -> None:
         quoting=csv.QUOTE_MINIMAL,
     )
     print(f"  · {csv_name}.csv  ({len(rows):,} rows)")
+
+def hash_password(password: str) -> str:
+    """Hash password using SHA-256"""
+    return hashlib.sha256(password.encode()).hexdigest()
 
 def today() -> dt.date:            # convenience
     return dt.date.today()
@@ -225,6 +230,73 @@ def gen_teams(departments, rng):
 # ────────────────────────────────
 # 3. Employees & security
 # ────────────────────────────────
+def gen_users(employees):
+    """Generate Users table data based on employee information"""
+    rows = []
+    password_data = []
+    
+    for emp in employees:
+        # Create username from first and last name (max 100 chars)
+        username = f"{emp['FirstName'].lower()}.{emp['LastName'].lower()}"
+        if len(username) > 100:
+            # Truncate to fit NVARCHAR(100)
+            username = username[:100]
+        
+        # Ensure unique username by adding number if needed
+        base_username = username
+        counter = 1
+        while any(u.get('Username') == username for u in rows):
+            # Ensure counter doesn't make it exceed 100 chars
+            suffix = str(counter)
+            max_base_len = 100 - len(suffix)
+            username = f"{base_username[:max_base_len]}{suffix}"
+            counter += 1
+        
+        # Create email (should match CompanyEmail from employee, max 100 chars)
+        email = emp['CompanyEmail']
+        if len(email) > 100:
+            # Truncate email to fit NVARCHAR(100)
+            email = email[:100]
+        
+        # Generate a real password
+        real_password = fake.password(length=12, special_chars=True, digits=True, upper_case=True, lower_case=True)
+        
+        # Hash the password for database storage
+        hashed_password = hash_password(real_password)
+        
+        # Store password data for Excel file
+        password_data.append({
+            "Email": email,
+            "RealPassword": real_password,
+            "HashedPassword": hashed_password,
+            "EmployeeID": emp['EmployeeID'],
+            "EmployeeName": f"{emp['FirstName']} {emp['LastName']}",
+            "Username": username
+        })
+        
+        # Determine if superuser (only for first few employees as admins)
+        is_superuser = 1 if emp['EmployeeID'] <= 5 else 0
+        
+        # Set last login based on activity
+        last_login = None
+        if emp['IsActive'] and random.random() < 0.8:  # 80% of active users have logged in
+            last_login = (dt.datetime.now() - dt.timedelta(days=random.randint(1, 30))).isoformat(sep=" ")
+        
+        rows.append({
+            "UserID":           emp['UserID'],  # Use the same UserID from employee
+            "Username":         username,
+            "Email":            email,
+            "HashedPassword":   hashed_password,
+            "IsActive":         emp['IsActive'],
+            "IsSuperuser":      is_superuser,
+            "LastLoginAt":      last_login,
+            "PasswordChangedAt": NOW_ISO,
+            "CreatedAt":        NOW_ISO,
+            "UpdatedAt":        NOW_ISO,
+        })
+    
+    return rows, password_data
+
 def gen_designations():
     # designation rows already seeded in DDL; grab their IDs dynamically 1..10
     return list(range(1, 11))
@@ -239,14 +311,20 @@ def gen_employees(teams, locations, n):
         first, last = fake.first_name(), fake.last_name()
         etype  = weighted_choice(CFG["emp_type_mix"])
         wmode  = weighted_choice(CFG["work_mode_mix"])
+        
+        # Create unique UserID (max 50 chars)
+        user_id = f"{first.lower()}.{last.lower()}"
+        if len(user_id) > 50:
+            # Truncate to fit NVARCHAR(50)
+            user_id = user_id[:50]
 
         rows.append({
             "EmployeeID":         eid,
             "EmployeeCode":       f"EMP{eid:05d}",
-            "UserID":             f"{first.lower()}.{last.lower()}",
-            "CompanyEmail":       f"{first.lower()}.{last.lower()}@echobyte.com",
+            "UserID":             user_id,
+            "CompanyEmail":       f"{user_id}@echobyte.com",
             "FirstName":          first,
-            "MiddleName":         "",
+            "MiddleName": fake.first_name() if random.random() < 0.7 else None,
             "LastName":           last,
             "DateOfBirth":        (today() - relativedelta(years=random.randint(28, 58))).isoformat(),
             "GenderCode":         random.choice(GENDER_CODES),
@@ -285,11 +363,27 @@ def gen_employees(teams, locations, n):
         active    = random.random() < active_pct
         etype     = weighted_choice(CFG["emp_type_mix"])
         wmode     = weighted_choice(CFG["work_mode_mix"])
+        
+        # Create unique UserID with number suffix to avoid conflicts (max 50 chars)
+        base_user_id = f"{first.lower()}.{last.lower()}"
+        if len(base_user_id) > 50:
+            # Truncate to fit NVARCHAR(50)
+            base_user_id = base_user_id[:50]
+        
+        user_id = base_user_id
+        counter = 1
+        while any(emp.get('UserID') == user_id for emp in rows):
+            # Ensure counter doesn't make it exceed 50 chars
+            suffix = str(counter)
+            max_base_len = 50 - len(suffix)
+            user_id = f"{base_user_id[:max_base_len]}{suffix}"
+            counter += 1
+        
         rows.append({
             "EmployeeID":         eid,
             "EmployeeCode":       f"EMP{eid:05d}",
-            "UserID":             f"{first.lower()}.{last.lower()}{random.randint(1, 9999)}",
-            "CompanyEmail":       f"{first.lower()}.{last.lower()}{random.randint(1,9999)}@echobyte.com",
+            "UserID":             user_id,
+            "CompanyEmail":       f"{user_id}@echobyte.com",
             "FirstName":          first,
             "MiddleName":         "",
             "LastName":           last,
@@ -527,22 +621,44 @@ def gen_assets(asset_types, locations):
         })
         aid += 1
     return rows
-
 def gen_asset_assignments(assets, employees):
     rows, asid = [], 1
+
+    # Filter only active employees
     active_emp = [e for e in employees if e["IsActive"]]
-    assignable_assets = [a for a in assets if a["AssetStatusCode"] in CFG["assignable_codes"]]
+
+    # Filter only assets eligible for assignment
+    assignable_assets = [
+        a for a in assets
+        if a["AssetStatusCode"] in CFG["assignable_codes"]
+    ]
+
+    # Optional defensive check
+    valid_asset_ids = {a["AssetID"] for a in assets}
+
     for asset in assignable_assets:
         if random.random() > 0.5:
-            continue
+            continue  # skip some randomly
+
         emp = random.choice(active_emp)
         due = asset["ContractExpiryDate"]
+
+        # ✅ Safely handle None
+        if isinstance(due, str):
+            due_dt = dt.datetime.fromisoformat(due).date()
+            if due_dt < dt.date.today():
+                continue  # skip expired assets
+
+        # Extra safety: skip if asset ID doesn't exist
+        if asset["AssetID"] not in valid_asset_ids:
+            continue
+
         rows.append({
             "AssignmentID":      asid,
             "AssetID":           asset["AssetID"],
             "EmployeeID":        emp["EmployeeID"],
             "AssignedAt":        NOW_ISO,
-            "DueReturnDate":     due.isoformat() if due else None,
+            "DueReturnDate":     due,
             "ReturnedAt":        None,
             "ConditionAtAssign": "Working",
             "ConditionAtReturn": None,
@@ -552,27 +668,38 @@ def gen_asset_assignments(assets, employees):
             "CreatedAt":         NOW_ISO,
             "UpdatedAt":         NOW_ISO,
         })
-        # mark status so trigger won't complain
+
         asset["AssetStatusCode"] = "Assigned"
         asid += 1
+
     return rows
+
+
+
 
 # ────────────────────────────────
 # 7. Feedback
 # ────────────────────────────────
-def gen_feedbacks(employees, departments):
+def gen_feedbacks(employees, teams):
     rows, fid = [], 1
+
+    # Build TeamID → DepartmentID map
+    team_to_dept = {t["TeamID"]: t["DepartmentID"] for t in teams}
+
     for _ in range(random.randint(100, 200)):
         emp = random.choice(employees)
+        team_id = emp["TeamID"]
+        dept_id = team_to_dept.get(team_id)
+
         rows.append({
             "FeedbackID":         fid,
             "FeedbackAt":         NOW_ISO,
-            "FeedbackTypeCode":   random.choice(["General","Manager","Department","Other"]),
-            "Category":           random.choice(["Process","Culture","Workload",""]),
-            "Subject":            random.choice(["Suggestion","Issue","Praise",""]) ,
+            "FeedbackTypeCode":   random.choice(["General", "Manager", "Department", "Other"]),
+            "Category":           random.choice(["Process", "Culture", "Workload", ""]),
+            "Subject":            random.choice(["Suggestion", "Issue", "Praise", ""]),
             "FeedbackText":       fake.paragraph(nb_sentences=5),
             "TargetManagerID":    emp["ManagerID"],
-            "TargetDepartmentID": emp["TeamID"],
+            "TargetDepartmentID": dept_id,
             "FeedbackHash":       fake.sha256(raw_output=False),
             "IsRead":             0,
             "ReadByID":           None,
@@ -580,6 +707,8 @@ def gen_feedbacks(employees, departments):
         })
         fid += 1
     return rows
+
+
 
 # ────────────────────────────────
 # MAIN
@@ -593,6 +722,7 @@ def main():
     teams         = gen_teams(departments, CFG["teams_per_dept"])
     employees, mgrs = gen_employees(teams, locations, CFG["n_employees"])
     e_contacts    = gen_emergency_contacts(employees)
+    users, password_data = gen_users(employees)
     _, emp_roles  = gen_roles_and_emp_roles(employees, mgrs)
     leave_bal     = gen_leave_balances(employees)
     leave_apps    = gen_leave_applications(employees, mgrs)
@@ -606,15 +736,20 @@ def main():
     assets      = gen_assets(asset_types, locations)
     assignments = gen_asset_assignments(assets, employees)
 
-    feedbacks   = gen_feedbacks(employees, departments)
+    feedbacks   = gen_feedbacks(employees, teams)
+
 
     # write csvs (parents first)
     wr("Locations",    locations)
     wr("Departments",  departments)
     wr("Teams",        teams)
+    wr("Users",        users)  # Users must be written before Employees due to FK constraint
     wr("Employees",    employees)
     wr("EmergencyContacts", e_contacts)
     wr("EmployeeRoles", emp_roles)
+    
+    # write password data to CSV file
+    wr("UserPasswords", password_data)
 
     wr("LeaveBalances",       leave_bal)
     wr("LeaveApplications",   leave_apps)

@@ -1,10 +1,10 @@
 /* ─────────────────────────────────────────────
    0.  Create / switch to the database
    ───────────────────────────────────────────── */
-IF DB_ID(N'echobyte') IS NULL
-    CREATE DATABASE echobyte;
+IF DB_ID(N'echobyte_test') IS NULL
+    CREATE DATABASE echobyte_test;
 GO
-USE echobyte;
+USE echobyte_test;
 GO
 
 /* Always roll back whole batch on any error */
@@ -179,7 +179,7 @@ CREATE TABLE dbo.Employees (
 
     CONSTRAINT FK_Employees_Managers
         FOREIGN KEY (ManagerID)    REFERENCES dbo.Employees(EmployeeID)
-        ON DELETE SET NULL
+        ON DELETE NO ACTION
         ON UPDATE NO ACTION,
 
     CONSTRAINT FK_Employees_Genders
@@ -439,71 +439,54 @@ END;
 GO
 
 /* ============================================================
-   9.  Hierarchy views
+   9‑Revised‑again.  Employee hierarchy view
    ============================================================ */
-
-CREATE OR ALTER VIEW dbo.vw_DepartmentHierarchies
-AS
-WITH cte AS (
-    SELECT  d.DepartmentID,
-            d.DepartmentName,
-            d.DepartmentCode,
-            d.ParentDepartmentID,
-            CAST(NULL AS NVARCHAR(100)) AS ParentDepartmentName,
-            0  AS Level,
-            CAST(d.DepartmentName AS NVARCHAR(MAX)) AS HierarchyPath
-    FROM dbo.Departments d
-    WHERE d.ParentDepartmentID IS NULL AND d.IsActive = 1
-
-    UNION ALL
-
-    SELECT  d.DepartmentID,
-            d.DepartmentName,
-            d.DepartmentCode,
-            d.ParentDepartmentID,
-            p.DepartmentName,
-            c.Level + 1,
-            c.HierarchyPath + N' > ' + d.DepartmentName
-    FROM dbo.Departments d
-    JOIN cte c          ON d.ParentDepartmentID = c.DepartmentID
-    JOIN dbo.Departments p ON p.DepartmentID     = d.ParentDepartmentID
-)
-SELECT * FROM cte;
-GO
-
 CREATE OR ALTER VIEW dbo.vw_EmployeeHierarchies
 AS
 WITH cte AS (
+    /* ─── Anchor rows (no manager) ─── */
     SELECT  e.EmployeeID,
             e.EmployeeCode,
-            CONCAT(e.FirstName, ' ', e.LastName) AS EmployeeName,
-            des.DesignationName                  AS Designation,
+            CAST(CONCAT(e.FirstName, ' ', e.LastName) AS NVARCHAR(100)) AS EmployeeName,
+            des.DesignationName,
             e.ManagerID,
-            CAST(NULL AS NVARCHAR(100)) AS ManagerName,
-            0          AS Level,
-            CAST(e.EmployeeID AS NVARCHAR(MAX)) AS HierarchyPath
-    FROM dbo.Employees e
-    JOIN dbo.Designations des ON des.DesignationID = e.DesignationID
-    WHERE e.ManagerID IS NULL AND e.IsActive = 1
+            CAST(NULL AS NVARCHAR(100))                                   AS ManagerName,
+            0                                                             AS Level,
+            CAST(CONCAT(e.FirstName, ' ', e.LastName) AS NVARCHAR(MAX))   AS HierarchyPath
+    FROM dbo.Employees     AS e
+    JOIN dbo.Designations  AS des ON des.DesignationID = e.DesignationID
+    WHERE e.ManagerID IS NULL
+      AND e.IsActive = 1
 
     UNION ALL
 
+    /* ─── Recursive part ─── */
     SELECT  e.EmployeeID,
             e.EmployeeCode,
-            CONCAT(e.FirstName, ' ', e.LastName),
+            CAST(CONCAT(e.FirstName, ' ', e.LastName) AS NVARCHAR(100)) AS EmployeeName,
             des.DesignationName,
             e.ManagerID,
-            CONCAT(m.FirstName, ' ', m.LastName),
-            c.Level + 1,
-            c.HierarchyPath + N' > ' + CAST(e.EmployeeID AS NVARCHAR(MAX))
-    FROM dbo.Employees  e
-    JOIN dbo.Employees  m   ON m.EmployeeID = e.ManagerID
-    JOIN dbo.Designations des ON des.DesignationID = e.DesignationID
-    JOIN cte            c   ON e.ManagerID  = c.EmployeeID
+            CAST(CONCAT(m.FirstName, ' ', m.LastName) AS NVARCHAR(100)) AS ManagerName,
+            c.Level + 1                                                 AS Level,
+            c.HierarchyPath + N' > ' +
+            CAST(CONCAT(e.FirstName, ' ', e.LastName) AS NVARCHAR(MAX)) AS HierarchyPath
+    FROM dbo.Employees     AS e
+    JOIN dbo.Employees     AS m   ON m.EmployeeID   = e.ManagerID
+    JOIN dbo.Designations  AS des ON des.DesignationID = e.DesignationID
+    JOIN cte               AS c   ON c.EmployeeID   = e.ManagerID
     WHERE e.IsActive = 1
 )
-SELECT * FROM cte;
+SELECT  EmployeeID,
+        EmployeeCode,
+        EmployeeName,
+        DesignationName,
+        ManagerID,
+        ManagerName,
+        Level,
+        HierarchyPath
+FROM cte;
 GO
+
 
 /* ============================================================
    10.  Stored procedures (example: leave approval)
@@ -622,18 +605,15 @@ INSERT INTO dbo.FeedbackTypes (FeedbackTypeCode, FeedbackTypeName) VALUES
  ('Department','Department'), ('Company','Company'), ('Other','Other');
 
 /* Roles – expanded for tech company */
-INSERT INTO dbo.Roles (RoleName, Description) VALUES
- ('Employee','Regular employee'),
- ('Manager','Team manager with approval rights'),
- ('HR','Human Resources'),
- ('Admin','System administrator'),
- ('CEO','Chief Executive Officer'),
- ('Developer','Software Developer'),
- ('QA','Quality Assurance'),
- ('DevOps','DevOps Engineer'),
- ('Designer','UX/UI Designer'),
- ('Product Manager','Product Manager'),
- ('Scrum Master','Scrum Master');
+INSERT INTO dbo.Roles (RoleName, Description)
+VALUES
+ ('Employee', 'General employee access'),
+ ('Manager', 'Team manager, can approve leaves'),
+ ('HR', 'HR staff, access to employee records'),
+ ('IT Support', 'Asset management privileges'),
+ ('Admin', 'System administrator'),
+ ('CEO', 'Executive privileges');
+
 
 /* Designations (sample) */
 INSERT INTO dbo.Designations (DesignationName) VALUES
@@ -644,19 +624,71 @@ INSERT INTO dbo.Designations (DesignationName) VALUES
  ('UX Designer'), ('Product Manager');
 GO
 
+INSERT INTO dbo.Locations (LocationName, Address1, Address2, City, State, Country, PostalCode, Phone, TimeZone)
+VALUES
+('New York HQ',       '123 Main St',     NULL,     'New York',    'NY', 'USA',   '10001', '+1-212-555-1000', 'America/New_York'),
+('San Francisco',     '456 Market Ave', 'Suite 9','San Francisco','CA', 'USA',   '94105', '+1-415-555-2000', 'America/Los_Angeles'),
+('London Office',     '10 Downing Rd',   NULL,     'London',       NULL, 'UK',    'SW1A 1AA', '+44-20-7946-1234', 'Europe/London'),
+('Bangalore Center',  '78 MG Road',      NULL,     'Bangalore',    'KA', 'India', '560001', '+91-80-4000-0000', 'Asia/Kolkata');
+
+-- INSERT INTO dbo.Departments (DepartmentName, DepartmentCode, ParentDepartmentID, LocationID)
+-- VALUES
+-- ('Engineering',      'ENG',   NULL, 1),
+-- ('Human Resources',  'HR',    NULL, 1),
+-- ('Product',          'PROD',  NULL, 2),
+-- ('IT Support',       'IT',    NULL, 1),
+-- ('Recruitment',      'REC',   2,    1),  -- Child of HR
+-- ('Quality Assurance','QA',    1,    1);  -- Child of Engineering
+
+INSERT INTO dbo.LeaveTypes (LeaveTypeName, LeaveCode, DefaultDaysPerYear)
+VALUES
+('Paid Time Off',     'PTO', 15.0),
+('Sick Leave',        'SICK', 10.0),
+('Maternity Leave',   'MAT',  90.0),
+('Paternity Leave',   'PAT',  10.0),
+('Bereavement Leave', 'BRV',   5.0),
+('Unpaid Leave',      'UNPD', NULL);
+
+-- INSERT INTO dbo.Teams (TeamName, TeamCode, DepartmentID)
+-- VALUES
+-- -- DepartmentID 1: Engineering
+-- ('Platform Team',      'PLAT', 1),
+-- ('Infrastructure Team','INFR', 1),
+
+-- -- DepartmentID 2: Human Resources
+-- ('Benefits Team',      'BEN',  2),
+-- ('Employee Relations', 'EREL', 2),
+
+-- -- DepartmentID 3: Product
+-- ('Product Strategy',   'PSTR', 3),
+-- ('UX Research',        'UXRS', 3),
+
+-- -- DepartmentID 4: IT Support
+-- ('IT Helpdesk',        'HELP', 4),
+-- ('Network Support',    'NETW', 4),
+
+-- -- DepartmentID 5: Recruitment (child of HR)
+-- ('Hiring Ops',         'HIRE', 5),
+-- ('University Relations','UNIR',5),
+
+-- -- DepartmentID 6: Quality Assurance (child of Engineering)
+-- ('QA Automation',      'QAA',  6),
+-- ('Manual Testing',     'QMNL', 6);
+
+
 /* Helpful indexes */
-CREATE INDEX IX_Employees_ManagerID   ON dbo.Employees(ManagerID);
-CREATE INDEX IX_Employees_TeamID      ON dbo.Employees(TeamID);
-CREATE INDEX IX_Employees_LocationID  ON dbo.Employees(LocationID);
+-- CREATE INDEX IX_Employees_ManagerID   ON dbo.Employees(ManagerID);
+-- CREATE INDEX IX_Employees_TeamID      ON dbo.Employees(TeamID);
+-- CREATE INDEX IX_Employees_LocationID  ON dbo.Employees(LocationID);
 
-CREATE INDEX IX_LeaveApplications_EmployeeID ON dbo.LeaveApplications(EmployeeID);
-CREATE INDEX IX_LeaveApplications_StatusCode ON dbo.LeaveApplications(StatusCode);
+-- CREATE INDEX IX_LeaveApplications_EmployeeID ON dbo.LeaveApplications(EmployeeID);
+-- CREATE INDEX IX_LeaveApplications_StatusCode ON dbo.LeaveApplications(StatusCode);
 
-CREATE INDEX IX_Timesheets_EmployeeID ON dbo.Timesheets(EmployeeID);
-CREATE INDEX IX_Timesheets_WeekStart  ON dbo.Timesheets(WeekStartDate);
+-- CREATE INDEX IX_Timesheets_EmployeeID ON dbo.Timesheets(EmployeeID);
+-- CREATE INDEX IX_Timesheets_WeekStart  ON dbo.Timesheets(WeekStartDate);
 
-CREATE INDEX IX_Departments_ParentID  ON dbo.Departments(ParentDepartmentID);
-GO
+-- CREATE INDEX IX_Departments_ParentID  ON dbo.Departments(ParentDepartmentID);
+-- GO
 
 
 /* ============================================================
@@ -809,8 +841,28 @@ INSERT INTO dbo.AssetTypes (AssetTypeName) VALUES
  ('Laptop'), ('Monitor'), ('Keyboard'), ('Mouse'),
  ('Docking Station'), ('Mobile Phone'), ('Headset');
 
--- Make sure an “IT Support” role exists for asset admins
+-- Make sure an "IT Support" role exists for asset admins
 IF NOT EXISTS (SELECT 1 FROM dbo.Roles WHERE RoleName = 'IT Support')
     INSERT INTO dbo.Roles (RoleName, Description)
     VALUES ('IT Support', 'IT Help-Desk / Asset Management');
+
+-- Add after the Roles table creation
+CREATE TABLE dbo.Users (
+    UserID          NVARCHAR(50)   NOT NULL PRIMARY KEY,
+    Username        NVARCHAR(100)  NOT NULL UNIQUE,
+    Email           NVARCHAR(100)  NOT NULL UNIQUE,
+    HashedPassword  NVARCHAR(255)  NOT NULL,
+    IsActive        BIT            NOT NULL CONSTRAINT DF_Users_IsActive DEFAULT (1),
+    IsSuperuser     BIT            NOT NULL CONSTRAINT DF_Users_IsSuperuser DEFAULT (0),
+    LastLoginAt     DATETIME2(3)   NULL,
+    PasswordChangedAt DATETIME2(3) NOT NULL CONSTRAINT DF_Users_PasswordChanged DEFAULT SYSUTCDATETIME(),
+    CreatedAt       DATETIME2(3)   NOT NULL CONSTRAINT DF_Users_Created DEFAULT SYSUTCDATETIME(),
+    UpdatedAt       DATETIME2(3)   NOT NULL CONSTRAINT DF_Users_Updated DEFAULT SYSUTCDATETIME()
+);
+
+-- Add foreign key constraint
+ALTER TABLE dbo.Employees 
+ADD CONSTRAINT FK_Employees_Users 
+    FOREIGN KEY (UserID) REFERENCES dbo.Users(UserID);
+
 GO
