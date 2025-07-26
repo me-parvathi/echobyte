@@ -304,12 +304,10 @@ CREATE TABLE dbo.LeaveApplications (
     ManagerID              INT            NULL,
     ManagerApprovalStatus  NVARCHAR(20)   NULL,
     ManagerApprovalAt      DATETIME2(3)   NULL,
-    ManagerComments        NVARCHAR(500)  NULL,
 
     HRApproverID           INT            NULL,
     HRApprovalStatus       NVARCHAR(20)   NULL,
     HRApprovalAt           DATETIME2(3)   NULL,
-    HRComments             NVARCHAR(500)  NULL,
 
     CreatedAt              DATETIME2(3)   NOT NULL CONSTRAINT DF_LeaveApplications_Created DEFAULT SYSUTCDATETIME(),
     UpdatedAt              DATETIME2(3)   NOT NULL CONSTRAINT DF_LeaveApplications_Updated DEFAULT SYSUTCDATETIME(),
@@ -866,3 +864,233 @@ ADD CONSTRAINT FK_Employees_Users
     FOREIGN KEY (UserID) REFERENCES dbo.Users(UserID);
 
 GO
+
+-- table for comments --
+CREATE TABLE dbo.Comments (
+    CommentID       BIGINT        IDENTITY(1,1) PRIMARY KEY,
+    EntityType      NVARCHAR(30)  NOT NULL,   -- e.g. 'LeaveApplication', 'Timesheet'
+    EntityID        INT           NOT NULL,   -- PK value of the target row
+    CommenterID     INT           NOT NULL,   -- FK → Employees
+    CommenterRole   NVARCHAR(20)  NULL,       -- 'Employee','Manager','HR', etc.
+    CommentText     NVARCHAR(MAX) NOT NULL,
+
+    CreatedAt       DATETIME2(3)  NOT NULL CONSTRAINT DF_Comments_Created DEFAULT SYSUTCDATETIME(),
+    UpdatedAt       DATETIME2(3)  NULL,
+    IsEdited        BIT           NOT NULL CONSTRAINT DF_Comments_IsEdited DEFAULT (0),
+    IsActive        BIT           NOT NULL CONSTRAINT DF_Comments_IsActive DEFAULT (1),
+
+    CONSTRAINT FK_Comments_Commenter
+        FOREIGN KEY (CommenterID) REFERENCES dbo.Employees(EmployeeID)
+);
+GO
+
+/* Fast look‑up by (entity‑type, entity‑id) */
+CREATE INDEX IX_Comments_Target
+    ON dbo.Comments(EntityType, EntityID);
+GO
+
+CREATE TABLE dbo.TicketStatuses (
+    TicketStatusCode  NVARCHAR(20)  NOT NULL PRIMARY KEY,  -- Open, In-Progress, Resolved, Closed, Escalated
+    TicketStatusName  NVARCHAR(50)  NOT NULL,
+    IsActive          BIT           NOT NULL CONSTRAINT DF_TicketStatuses_IsActive DEFAULT (1),
+    CreatedAt         DATETIME2(3)  NOT NULL CONSTRAINT DF_TicketStatuses_Created DEFAULT SYSUTCDATETIME()
+);
+
+INSERT INTO dbo.TicketStatuses (TicketStatusCode, TicketStatusName) VALUES
+('Open', 'Open - Awaiting Assignment'),
+('Assigned', 'Assigned - Work in Progress'),
+('In-Progress', 'In Progress - Being Worked On'),
+('Pending-User', 'Pending User Response'),
+('Pending-Vendor', 'Pending Vendor Response'),
+('Resolved', 'Resolved - Issue Fixed'),
+('Closed', 'Closed - Ticket Complete'),
+('Escalated', 'Escalated - Manager Review'),
+('Cancelled', 'Cancelled - No Longer Needed'),
+('On-Hold', 'On Hold - Temporarily Suspended');
+
+CREATE TABLE dbo.TicketPriorities (
+    PriorityCode      NVARCHAR(10)  NOT NULL PRIMARY KEY,   -- Low, Medium, High, Critical, Urgent
+    PriorityName      NVARCHAR(50)  NOT NULL,
+    SLAHours          INT           NOT NULL,               -- Service Level Agreement in hours
+    IsActive          BIT           NOT NULL CONSTRAINT DF_TicketPriorities_IsActive DEFAULT (1),
+    CreatedAt         DATETIME2(3)  NOT NULL CONSTRAINT DF_TicketPriorities_Created DEFAULT SYSUTCDATETIME()
+);
+
+INSERT INTO dbo.TicketPriorities (PriorityCode, PriorityName, SLAHours) VALUES
+('LOW', 'Low Priority', 72),           -- 3 business days
+('MED', 'Medium Priority', 24),        -- 1 business day
+('HIGH', 'High Priority', 4),          -- 4 hours
+('CRIT', 'Critical', 1),               -- 1 hour
+('URG', 'Urgent', 2);                  -- 2 hours
+
+CREATE TABLE dbo.TicketCategories (
+    CategoryID        INT           IDENTITY(1,1) PRIMARY KEY,
+    CategoryName      NVARCHAR(100) NOT NULL UNIQUE,        -- Hardware, Software, Network, Access, etc.
+    ParentCategoryID  INT           NULL,                   -- For subcategories
+    IsActive          BIT           NOT NULL CONSTRAINT DF_TicketCategories_IsActive DEFAULT (1),
+    CreatedAt         DATETIME2(3)  NOT NULL CONSTRAINT DF_TicketCategories_Created DEFAULT SYSUTCDATETIME(),
+    
+    CONSTRAINT FK_TicketCategories_Parent 
+        FOREIGN KEY (ParentCategoryID) REFERENCES dbo.TicketCategories(CategoryID)
+);
+
+-- Parent Categories
+INSERT INTO dbo.TicketCategories (CategoryName, ParentCategoryID) VALUES
+('Hardware Issues', NULL),
+('Software Issues', NULL),
+('Network & Connectivity', NULL),
+('Access & Permissions', NULL),
+('Email & Communication', NULL),
+('Security Issues', NULL),
+('Mobile Devices', NULL),
+('Printing & Scanning', NULL),
+('General IT Support', NULL);
+
+-- Hardware Subcategories
+INSERT INTO dbo.TicketCategories (CategoryName, ParentCategoryID) VALUES
+('Laptop Issues', 1),
+('Desktop Issues', 1),
+('Monitor Problems', 1),
+('Keyboard/Mouse Issues', 1),
+('Docking Station Problems', 1),
+('Hardware Replacement', 1),
+('Hardware Repair', 1);
+
+-- Software Subcategories
+INSERT INTO dbo.TicketCategories (CategoryName, ParentCategoryID) VALUES
+('Operating System Issues', 2),
+('Application Crashes', 2),
+('Software Installation', 2),
+('Software Updates', 2),
+('License Issues', 2),
+('Performance Issues', 2),
+('Compatibility Problems', 2);
+
+-- Network Subcategories
+INSERT INTO dbo.TicketCategories (CategoryName, ParentCategoryID) VALUES
+('WiFi Connectivity', 3),
+('VPN Issues', 3),
+('Internet Access', 3),
+('Network Printer Issues', 3),
+('Network Drive Access', 3),
+('Bandwidth Issues', 3);
+
+-- Access Subcategories
+INSERT INTO dbo.TicketCategories (CategoryName, ParentCategoryID) VALUES
+('Account Creation', 4),
+('Password Reset', 4),
+('Access Rights', 4),
+('Account Lockout', 4),
+('Multi-Factor Authentication', 4),
+('System Permissions', 4);
+
+-- Email Subcategories
+INSERT INTO dbo.TicketCategories (CategoryName, ParentCategoryID) VALUES
+('Email Access Issues', 5),
+('Email Configuration', 5),
+('Spam/Phishing', 5),
+('Email Storage', 5),
+('Calendar Issues', 5),
+('Email Client Problems', 5);
+
+-- Security Subcategories
+INSERT INTO dbo.TicketCategories (CategoryName, ParentCategoryID) VALUES
+('Malware/Virus Issues', 6),
+('Security Software', 6),
+('Data Breach Concerns', 6),
+('Compliance Issues', 6),
+('Security Training', 6);
+
+-- Mobile Device Subcategories
+INSERT INTO dbo.TicketCategories (CategoryName, ParentCategoryID) VALUES
+('Mobile Phone Issues', 7),
+('Tablet Problems', 7),
+('Mobile App Issues', 7),
+('Mobile Device Setup', 7),
+('Mobile Security', 7);
+
+-- Printing Subcategories
+INSERT INTO dbo.TicketCategories (CategoryName, ParentCategoryID) VALUES
+('Printer Setup', 8),
+('Print Quality Issues', 8),
+('Scanner Problems', 8),
+('Printer Network Issues', 8),
+('Printer Maintenance', 8);
+
+-- General IT Subcategories
+INSERT INTO dbo.TicketCategories (CategoryName, ParentCategoryID) VALUES
+('Training Requests', 9),
+('Documentation Requests', 9),
+('Equipment Requests', 9),
+('General Questions', 9),
+('System Maintenance', 9);
+
+
+
+CREATE TABLE dbo.Tickets (
+    TicketID          INT           IDENTITY(1,1) PRIMARY KEY,
+    TicketNumber      NVARCHAR(20)  NOT NULL UNIQUE,        -- Auto-generated: TKT-2024-001
+    Subject           NVARCHAR(200) NOT NULL,
+    Description       NVARCHAR(MAX) NOT NULL,
+    
+    -- Ticket Details
+    CategoryID        INT           NOT NULL,
+    PriorityCode      NVARCHAR(10)  NOT NULL,
+    StatusCode        NVARCHAR(20)  NOT NULL,
+    
+    -- People Involved
+    OpenedByID        INT           NOT NULL,               -- Employee who opened the ticket
+    AssignedToID      INT           NULL,                   -- IT staff assigned
+    EscalatedToID     INT           NULL,                   -- Manager for escalation
+    
+    -- Asset Association (Optional)
+    AssetID           INT           NULL,                   -- Related asset if applicable
+    
+    -- Timestamps
+    OpenedAt          DATETIME2(3)  NOT NULL CONSTRAINT DF_Tickets_Opened DEFAULT SYSUTCDATETIME(),
+    AssignedAt        DATETIME2(3)  NULL,
+    EscalatedAt       DATETIME2(3)  NULL,
+    ResolvedAt        DATETIME2(3)  NULL,
+    ClosedAt          DATETIME2(3)  NULL,
+    DueDate           DATETIME2(3)  NULL,                   -- Calculated based on priority SLA
+    CreatedAt         DATETIME2(3)  NOT NULL CONSTRAINT DF_Tickets_Created DEFAULT SYSUTCDATETIME(),
+    UpdatedAt         DATETIME2(3)  NOT NULL CONSTRAINT DF_Tickets_Updated DEFAULT SYSUTCDATETIME(),
+    
+    -- Foreign Keys
+    CONSTRAINT FK_Tickets_Category     FOREIGN KEY (CategoryID)     REFERENCES dbo.TicketCategories(CategoryID),
+    CONSTRAINT FK_Tickets_Priority     FOREIGN KEY (PriorityCode)   REFERENCES dbo.TicketPriorities(PriorityCode),
+    CONSTRAINT FK_Tickets_Status       FOREIGN KEY (StatusCode)     REFERENCES dbo.TicketStatuses(TicketStatusCode),
+    CONSTRAINT FK_Tickets_OpenedBy     FOREIGN KEY (OpenedByID)     REFERENCES dbo.Employees(EmployeeID),
+    CONSTRAINT FK_Tickets_AssignedTo   FOREIGN KEY (AssignedToID)   REFERENCES dbo.Employees(EmployeeID),
+    CONSTRAINT FK_Tickets_EscalatedTo  FOREIGN KEY (EscalatedToID)  REFERENCES dbo.Employees(EmployeeID),
+    CONSTRAINT FK_Tickets_Asset        FOREIGN KEY (AssetID)        REFERENCES dbo.Assets(AssetID)
+);
+
+CREATE TABLE dbo.TicketActivities (
+    ActivityID        INT           IDENTITY(1,1) PRIMARY KEY,
+    TicketID          INT           NOT NULL,
+    ActivityType      NVARCHAR(30)  NOT NULL,               -- Status_Change, Assignment, Escalation, Comment, etc.
+    PerformedByID     INT           NOT NULL,
+    OldValue          NVARCHAR(100) NULL,
+    NewValue          NVARCHAR(100) NULL,
+    ActivityDetails   NVARCHAR(500) NULL,
+    PerformedAt       DATETIME2(3)  NOT NULL CONSTRAINT DF_TicketActivities_Performed DEFAULT SYSUTCDATETIME(),
+    
+    CONSTRAINT FK_TicketActivities_Ticket      FOREIGN KEY (TicketID)      REFERENCES dbo.Tickets(TicketID),
+    CONSTRAINT FK_TicketActivities_PerformedBy FOREIGN KEY (PerformedByID) REFERENCES dbo.Employees(EmployeeID)
+);
+
+CREATE TABLE dbo.TicketAttachments (
+    AttachmentID      INT           IDENTITY(1,1) PRIMARY KEY,
+    TicketID          INT           NOT NULL,
+    FileName          NVARCHAR(255) NOT NULL,
+    FilePath          NVARCHAR(500) NOT NULL,
+    FileSize          BIGINT        NOT NULL,
+    MimeType          NVARCHAR(100) NULL,
+    UploadedByID      INT           NOT NULL,
+    UploadedAt        DATETIME2(3)  NOT NULL CONSTRAINT DF_TicketAttachments_Uploaded DEFAULT SYSUTCDATETIME(),
+    
+    CONSTRAINT FK_TicketAttachments_Ticket     FOREIGN KEY (TicketID)     REFERENCES dbo.Tickets(TicketID),
+    CONSTRAINT FK_TicketAttachments_UploadedBy FOREIGN KEY (UploadedByID) REFERENCES dbo.Employees(EmployeeID)
+);
+

@@ -274,9 +274,6 @@ def gen_users(employees):
             "Username": username
         })
         
-        # Determine if superuser (only for first few employees as admins)
-        is_superuser = 1 if emp['EmployeeID'] <= 5 else 0
-        
         # Set last login based on activity
         last_login = None
         if emp['IsActive'] and random.random() < 0.8:  # 80% of active users have logged in
@@ -288,7 +285,6 @@ def gen_users(employees):
             "Email":            email,
             "HashedPassword":   hashed_password,
             "IsActive":         emp['IsActive'],
-            "IsSuperuser":      is_superuser,
             "LastLoginAt":      last_login,
             "PasswordChangedAt": NOW_ISO,
             "CreatedAt":        NOW_ISO,
