@@ -82,6 +82,7 @@ class Employee(Base):
     designation = relationship("Designation")
     emergency_contacts = relationship("EmergencyContact", back_populates="employee")
     user = relationship("User", foreign_keys=[UserID])
+    comments = relationship("Comment", back_populates="commenter")
 
 class EmergencyContact(Base):
     __tablename__ = "EmergencyContacts"

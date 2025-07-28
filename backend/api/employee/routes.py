@@ -2,9 +2,22 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from core.database import get_db
+from core.auth import get_current_active_user
 from . import schemas, service
 
 router = APIRouter()
+
+# Current employee route - must come first to avoid conflicts
+@router.get("/profile/current", response_model=schemas.EmployeeResponse)
+def get_current_employee(
+    current_user = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get current employee profile by authenticated user"""
+    employee = service.EmployeeService.get_employee_by_user_id(db, current_user.UserID)
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found for current user")
+    return employee
 
 # Employee routes
 @router.get("/", response_model=schemas.EmployeeListResponse)
@@ -26,6 +39,33 @@ def get_employees(
         employees=employees, total=total, page=skip//limit + 1, size=limit
     )
 
+@router.post("/", response_model=schemas.EmployeeResponse, status_code=201)
+def create_employee(employee: schemas.EmployeeCreate, db: Session = Depends(get_db)):
+    """Create a new employee"""
+    return service.EmployeeService.create_employee(db, employee)
+
+# Lookup routes (must come before parameterized routes)
+@router.get("/lookup/genders", response_model=List[schemas.GenderResponse])
+def get_genders(db: Session = Depends(get_db)):
+    """Get all active genders"""
+    return service.LookupService.get_genders(db)
+
+@router.get("/lookup/employment-types", response_model=List[schemas.EmploymentTypeResponse])
+def get_employment_types(db: Session = Depends(get_db)):
+    """Get all active employment types"""
+    return service.LookupService.get_employment_types(db)
+
+@router.get("/lookup/work-modes", response_model=List[schemas.WorkModeResponse])
+def get_work_modes(db: Session = Depends(get_db)):
+    """Get all active work modes"""
+    return service.LookupService.get_work_modes(db)
+
+@router.get("/lookup/designations", response_model=List[schemas.DesignationResponse])
+def get_designations(db: Session = Depends(get_db)):
+    """Get all active designations"""
+    return service.LookupService.get_designations(db)
+
+# Parameterized routes (must come after specific routes)
 @router.get("/{employee_id}", response_model=schemas.EmployeeResponse)
 def get_employee(employee_id: int, db: Session = Depends(get_db)):
     """Get a specific employee by ID"""
@@ -33,11 +73,6 @@ def get_employee(employee_id: int, db: Session = Depends(get_db)):
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
     return employee
-
-@router.post("/", response_model=schemas.EmployeeResponse, status_code=201)
-def create_employee(employee: schemas.EmployeeCreate, db: Session = Depends(get_db)):
-    """Create a new employee"""
-    return service.EmployeeService.create_employee(db, employee)
 
 @router.put("/{employee_id}", response_model=schemas.EmployeeResponse)
 def update_employee(
@@ -95,25 +130,4 @@ def update_emergency_contact(
 def delete_emergency_contact(contact_id: int, db: Session = Depends(get_db)):
     """Delete an emergency contact"""
     service.EmergencyContactService.delete_emergency_contact(db, contact_id)
-    return None
-
-# Lookup routes
-@router.get("/lookup/genders", response_model=List[schemas.GenderResponse])
-def get_genders(db: Session = Depends(get_db)):
-    """Get all active genders"""
-    return service.LookupService.get_genders(db)
-
-@router.get("/lookup/employment-types", response_model=List[schemas.EmploymentTypeResponse])
-def get_employment_types(db: Session = Depends(get_db)):
-    """Get all active employment types"""
-    return service.LookupService.get_employment_types(db)
-
-@router.get("/lookup/work-modes", response_model=List[schemas.WorkModeResponse])
-def get_work_modes(db: Session = Depends(get_db)):
-    """Get all active work modes"""
-    return service.LookupService.get_work_modes(db)
-
-@router.get("/lookup/designations", response_model=List[schemas.DesignationResponse])
-def get_designations(db: Session = Depends(get_db)):
-    """Get all active designations"""
-    return service.LookupService.get_designations(db) 
+    return None 

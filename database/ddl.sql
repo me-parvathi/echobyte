@@ -1,11 +1,11 @@
 /* ─────────────────────────────────────────────
    0.  Create / switch to the database
    ───────────────────────────────────────────── */
-IF DB_ID(N'echobyte_test') IS NULL
-    CREATE DATABASE echobyte_test;
-GO
-USE echobyte_test;
-GO
+-- IF DB_ID(N'echobyte_test') IS NULL
+--     CREATE DATABASE echobyte_test;
+-- GO
+-- USE echobyte_test;
+-- GO
 
 /* Always roll back whole batch on any error */
 SET XACT_ABORT ON;
@@ -491,77 +491,118 @@ GO
    ============================================================ */
 
 CREATE OR ALTER PROCEDURE dbo.sp_ProcessLeaveApproval
-    @LeaveApplicationID INT,
-    @ApproverID         INT,
-    @ApprovalStatusCode NVARCHAR(20),
-    @Comments           NVARCHAR(500) = NULL
+    @LeaveApplicationID   INT,
+    @ApproverID           INT,
+    @ApprovalStatusCode   NVARCHAR(20),
+    @Comments             NVARCHAR(500) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    DECLARE @CurrentStatusCode  NVARCHAR(25),
-            @EmployeeManagerID  INT,
-            @IsHR               BIT = 0;
+    DECLARE 
+        @CurrentStatusCode  NVARCHAR(25),
+        @EmployeeManagerID  INT,
+        @IsHR               BIT = 0;
 
-    /* HR role? */
-    IF EXISTS (SELECT 1
-               FROM dbo.EmployeeRoles er
-               JOIN dbo.Roles r ON r.RoleID = er.RoleID
-               WHERE er.EmployeeID = @ApproverID
-                 AND r.RoleName    = 'HR'
-                 AND er.IsActive   = 1)
-        SET @IsHR = 1;
+    ----------------------------------------------------------------
+    -- 1) Determine whether the approver is in HR
+    ----------------------------------------------------------------
+    SELECT 
+        @IsHR = CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END
+    FROM dbo.EmployeeRoles er
+    JOIN dbo.Roles r 
+      ON r.RoleID = er.RoleID
+    WHERE er.EmployeeID = @ApproverID
+      AND er.IsActive   = 1
+      AND r.RoleName    = 'HR';
 
-    /* Current status + manager */
-    SELECT  @CurrentStatusCode = la.StatusCode,
-            @EmployeeManagerID = e.ManagerID
+    ----------------------------------------------------------------
+    -- 2) Fetch current leave status and the employee’s manager
+    ----------------------------------------------------------------
+    SELECT 
+        @CurrentStatusCode = la.StatusCode,
+        @EmployeeManagerID = e.ManagerID
     FROM dbo.LeaveApplications la
-    JOIN dbo.Employees e ON e.EmployeeID = la.EmployeeID
+    JOIN dbo.Employees       e 
+      ON e.EmployeeID = la.EmployeeID
     WHERE la.LeaveApplicationID = @LeaveApplicationID;
 
-    /* Manager approval */
+    ----------------------------------------------------------------
+    -- 3) Manager approval path
+    ----------------------------------------------------------------
     IF @ApproverID = @EmployeeManagerID
        AND @CurrentStatusCode = 'Submitted'
     BEGIN
         UPDATE dbo.LeaveApplications
-        SET ManagerApprovalStatus = @ApprovalStatusCode,
+        SET
+            ManagerApprovalStatus = @ApprovalStatusCode,
             ManagerApprovalAt     = SYSUTCDATETIME(),
-            ManagerComments       = @Comments,
-            StatusCode            = CASE WHEN @ApprovalStatusCode = 'Approved'
-                                          THEN 'Manager-Approved'
-                                          ELSE 'Rejected' END,
+            StatusCode            = CASE 
+                                       WHEN @ApprovalStatusCode = 'Approved' 
+                                         THEN 'Manager-Approved' 
+                                       ELSE 'Rejected' 
+                                     END,
             UpdatedAt             = SYSUTCDATETIME()
         WHERE LeaveApplicationID = @LeaveApplicationID;
+
+        INSERT INTO dbo.Comments
+            (EntityType, EntityID, CommenterID, CommenterRole, CommentText)
+        VALUES
+            ('LeaveApplication', @LeaveApplicationID, @ApproverID, 'Manager', @Comments);
+
+        RETURN;
     END
-    /* HR approval */
-    ELSE IF @IsHR = 1
-         AND @CurrentStatusCode = 'Manager-Approved'
+
+    ----------------------------------------------------------------
+    -- 4) HR approval path
+    ----------------------------------------------------------------
+    IF @IsHR = 1
+       AND @CurrentStatusCode = 'Manager-Approved'
     BEGIN
         UPDATE dbo.LeaveApplications
-        SET HRApproverID      = @ApproverID,
+        SET
+            HRApproverID      = @ApproverID,
             HRApprovalStatus  = @ApprovalStatusCode,
             HRApprovalAt      = SYSUTCDATETIME(),
-            HRComments        = @Comments,
-            StatusCode        = CASE WHEN @ApprovalStatusCode = 'Approved'
-                                      THEN 'HR-Approved'
-                                      ELSE 'Rejected' END,
+            StatusCode        = CASE 
+                                   WHEN @ApprovalStatusCode = 'Approved' 
+                                     THEN 'HR-Approved' 
+                                   ELSE 'Rejected' 
+                                 END,
             UpdatedAt         = SYSUTCDATETIME()
         WHERE LeaveApplicationID = @LeaveApplicationID;
 
-        /* adjust balance */
+        -- adjust the employee’s leave balance if final approval
         IF @ApprovalStatusCode = 'Approved'
         BEGIN
             UPDATE lb
-            SET UsedDays  = UsedDays + la.NumberOfDays,
+            SET 
+                UsedDays  = lb.UsedDays + la.NumberOfDays,
                 UpdatedAt = SYSUTCDATETIME()
             FROM dbo.LeaveBalances lb
             JOIN dbo.LeaveApplications la
-                ON lb.EmployeeID  = la.EmployeeID
-               AND lb.LeaveTypeID = la.LeaveTypeID
+              ON la.EmployeeID  = lb.EmployeeID
+             AND la.LeaveTypeID = lb.LeaveTypeID
             WHERE la.LeaveApplicationID = @LeaveApplicationID
               AND lb.Year = YEAR(la.StartDate);
         END
+
+        INSERT INTO dbo.Comments
+            (EntityType, EntityID, CommenterID, CommenterRole, CommentText)
+        VALUES
+            ('LeaveApplication', @LeaveApplicationID, @ApproverID, 'HR', @Comments);
+
+        RETURN;
     END
+
+    ----------------------------------------------------------------
+    -- 5) Unauthorized or out‑of‑sequence call
+    ----------------------------------------------------------------
+    RAISERROR(
+        'Approval operation not permitted: you must be the manager (when status=Submitted) or HR (when status=Manager-Approved).', 
+        16, 1
+    );
+    RETURN;
 END;
 GO
 
@@ -1094,3 +1135,25 @@ CREATE TABLE dbo.TicketAttachments (
     CONSTRAINT FK_TicketAttachments_UploadedBy FOREIGN KEY (UploadedByID) REFERENCES dbo.Employees(EmployeeID)
 );
 
+CREATE OR ALTER TRIGGER dbo.tr_Employees_DisableOnTermination
+ON dbo.Employees
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE e
+    SET 
+        e.IsActive  = 0,
+        e.UpdatedAt = SYSUTCDATETIME()
+    FROM dbo.Employees AS e
+    INNER JOIN inserted AS i
+        ON e.EmployeeID = i.EmployeeID
+    WHERE 
+        i.TerminationDate IS NOT NULL
+        -- Only flip those still marked active
+        AND e.IsActive = 1
+        -- Only for term dates up to today
+        AND CAST(i.TerminationDate AS DATE) <= CAST(GETDATE() AS DATE);
+END;
+GO

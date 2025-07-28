@@ -7,4 +7,5 @@ from api.leave.models import *
 from api.timesheet.models import *
 from api.asset.models import *
 from api.feedback.models import *
-from api.auth.models import * 
+from api.auth.models import *
+from api.comments.models import * 

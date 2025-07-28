@@ -4,28 +4,26 @@ from datetime import date, datetime
 
 # Asset schemas
 class AssetBase(BaseModel):
-    AssetName: str
+    AssetTag: str
     AssetTypeID: int
     SerialNumber: Optional[str] = None
     Model: Optional[str] = None
-    Manufacturer: Optional[str] = None
+    Vendor: Optional[str] = None
     PurchaseDate: Optional[date] = None
-    PurchaseCost: Optional[float] = None
-    StatusID: int
+    AssetStatusCode: str
     IsActive: bool = True
 
 class AssetCreate(AssetBase):
     pass
 
 class AssetUpdate(BaseModel):
-    AssetName: Optional[str] = None
+    AssetTag: Optional[str] = None
     AssetTypeID: Optional[int] = None
     SerialNumber: Optional[str] = None
     Model: Optional[str] = None
-    Manufacturer: Optional[str] = None
+    Vendor: Optional[str] = None
     PurchaseDate: Optional[date] = None
-    PurchaseCost: Optional[float] = None
-    StatusID: Optional[int] = None
+    AssetStatusCode: Optional[str] = None
     IsActive: Optional[bool] = None
 
 class AssetResponse(AssetBase):
@@ -38,22 +36,19 @@ class AssetResponse(AssetBase):
 
 # Asset Type schemas
 class AssetTypeBase(BaseModel):
-    TypeName: str
-    Description: Optional[str] = None
+    AssetTypeName: str
     IsActive: bool = True
 
 class AssetTypeCreate(AssetTypeBase):
     pass
 
 class AssetTypeUpdate(BaseModel):
-    TypeName: Optional[str] = None
-    Description: Optional[str] = None
+    AssetTypeName: Optional[str] = None
     IsActive: Optional[bool] = None
 
 class AssetTypeResponse(AssetTypeBase):
     AssetTypeID: int
     CreatedAt: datetime
-    UpdatedAt: datetime
     
     class Config:
         from_attributes = True
@@ -88,22 +83,21 @@ class AssetAssignmentResponse(AssetAssignmentBase):
 
 # Asset Status schemas
 class AssetStatusBase(BaseModel):
-    StatusName: str
-    Description: Optional[str] = None
+    AssetStatusName: str
+    IsAssignable: bool
     IsActive: bool = True
 
 class AssetStatusCreate(AssetStatusBase):
     pass
 
 class AssetStatusUpdate(BaseModel):
-    StatusName: Optional[str] = None
-    Description: Optional[str] = None
+    AssetStatusName: Optional[str] = None
+    IsAssignable: Optional[bool] = None
     IsActive: Optional[bool] = None
 
 class AssetStatusResponse(AssetStatusBase):
-    StatusID: int
+    AssetStatusCode: str
     CreatedAt: datetime
-    UpdatedAt: datetime
     
     class Config:
         from_attributes = True 

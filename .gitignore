@@ -4,12 +4,14 @@ docker-compose.override.yml
 .env
 echobyte_venv
 csv_out/
+csv_out_backup/
 environments.py
 logs/
 frontend/
 load_csvs_to_sqlserver.py
 LICENSE
 README.md
+frontend/node_modules/
 
 .env
 .env.local

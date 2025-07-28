@@ -67,12 +67,10 @@ class LeaveApplication(Base):
     ManagerID = Column(Integer, ForeignKey("Employees.EmployeeID"))
     ManagerApprovalStatus = Column(String(20), ForeignKey("ApprovalStatuses.ApprovalStatusCode"))
     ManagerApprovalAt = Column(DateTime)
-    ManagerComments = Column(Text)
     
     HRApproverID = Column(Integer, ForeignKey("Employees.EmployeeID"))
     HRApprovalStatus = Column(String(20), ForeignKey("ApprovalStatuses.ApprovalStatusCode"))
     HRApprovalAt = Column(DateTime)
-    HRComments = Column(Text)
     
     CreatedAt = Column(DateTime, nullable=False, server_default=func.getutcdate())
     UpdatedAt = Column(DateTime, nullable=False, server_default=func.getutcdate(), onupdate=func.getutcdate())

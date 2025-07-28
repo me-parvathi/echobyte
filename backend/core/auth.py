@@ -6,7 +6,7 @@ This module provides JWT token validation, user authentication, and security dep
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import jwt
 import os
 from typing import Optional
@@ -49,6 +49,43 @@ def verify_token(token: str) -> dict:
             detail="Invalid token"
         )
 
+def check_employee_termination_status(db: Session, user_id: str) -> bool:
+    """
+    Check if an employee has been terminated.
+    
+    Args:
+        db: Database session
+        user_id: User ID to check
+        
+    Returns:
+        True if employee is terminated, False otherwise
+        
+    Raises:
+        HTTPException: If employee record not found
+    """
+    from api.employee.models import Employee
+    
+    # Get employee record for the user
+    employee = db.query(Employee).filter(
+        Employee.UserID == user_id
+    ).first()
+    
+    if not employee:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Employee record not found"
+        )
+    
+    # Check if employee is inactive
+    if not employee.IsActive:
+        return True
+    
+    # Check if employee has a termination date in the past
+    if employee.TerminationDate and employee.TerminationDate <= date.today():
+        return True
+    
+    return False
+
 def get_current_user(
     db: Session = Depends(get_db),
     credentials: HTTPAuthorizationCredentials = Depends(oauth2_scheme)
@@ -75,6 +112,25 @@ def get_current_user(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found or inactive"
+            )
+        
+        # Check if employee has been terminated
+        try:
+            is_terminated = check_employee_termination_status(db, user.UserID)
+            if is_terminated:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied. Your employment has been terminated."
+                )
+        except HTTPException as e:
+            # Re-raise HTTP exceptions from check_employee_termination_status
+            raise e
+        except Exception as e:
+            # Log the error but don't expose internal details
+            print(f"Error checking employee termination status: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Authentication error"
             )
             
         return user

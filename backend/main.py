@@ -25,9 +25,11 @@ from api.timesheet.routes import router as timesheet_router
 from api.asset.routes import router as asset_router
 from api.feedback.routes import router as feedback_router
 from api.auth.routes import router as auth_router
+from api.comments.routes import router as comment_router
+from api.ticket.routes import router as ticket_router
 
 # Import database utilities
-from core.database import init_database, get_database_health, test_database_connection
+from core.database import init_database, get_database_health, test_database_connection, get_connection_stats, reset_connection_pool
 
 # Configure logging
 logging.basicConfig(
@@ -86,6 +88,7 @@ app = FastAPI(
     * 🏖️ **Leave Management** - Leave applications, approvals, and balances
     * ⏰ **Timesheet Management** - Time tracking and approval workflows
     * 💻 **Asset Management** - IT asset tracking and assignments
+    * 🎫 **IT Support Tickets** - Help desk ticketing system with SLA management
     * 💬 **Feedback System** - Employee feedback and communication
     * 🔐 **Authentication & Authorization** - Secure access control
     
@@ -289,6 +292,22 @@ app.include_router(
     responses={404: {"description": "Feedback not found"}}
 )
 
+# Comments System
+app.include_router(
+    comment_router,
+    prefix="/api/comments",
+    tags=["Comments"],
+    responses={404: {"description": "Comment or entity not found"}}
+)
+
+# IT Support Tickets
+app.include_router(
+    ticket_router,
+    prefix="/api/tickets",
+    tags=["IT Support Tickets"],
+    responses={404: {"description": "Ticket not found"}}
+)
+
 # Root endpoints
 
 @app.get("/", tags=["Root"])
@@ -323,6 +342,39 @@ async def database_health_check():
     Database health check endpoint.
     """
     return get_database_health()
+
+@app.get("/health/connections", tags=["Health"])
+async def connection_pool_monitor():
+    """
+    Database connection pool monitoring endpoint.
+    Provides detailed connection pool statistics and monitoring data.
+    """
+    return {
+        "connection_stats": get_connection_stats(),
+        "database_health": get_database_health(),
+        "timestamp": time.time()
+    }
+
+@app.post("/health/connections/reset", tags=["Health"])
+async def reset_connection_pool_endpoint():
+    """
+    Reset the database connection pool.
+    Use this endpoint if you're experiencing connection pool issues.
+    """
+    try:
+        reset_connection_pool()
+        return {
+            "status": "success",
+            "message": "Connection pool reset successfully",
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"Failed to reset connection pool: {e}")
+        return {
+            "status": "error",
+            "message": f"Failed to reset connection pool: {str(e)}",
+            "timestamp": time.time()
+        }
 
 @app.get("/health/full", tags=["Health"])
 async def full_health_check():

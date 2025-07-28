@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from datetime import datetime, timedelta, date
 from decimal import Decimal
 import calendar
+from core.timesheet_utils import check_timesheet_conflicts_for_leave_application
 
 def calculate_business_days(start_date: date, end_date: date, exclude_holidays: bool = True) -> Decimal:
     """
@@ -100,6 +101,9 @@ class LeaveService:
     @staticmethod
     def create_leave_application(db: Session, application: schemas.LeaveApplicationCreate):
         """Create a new leave application"""
+        # Check for timesheet conflicts before creating leave application
+        check_timesheet_conflicts_for_leave_application(db, application.EmployeeID, application.StartDate, application.EndDate)
+        
         # Calculate NumberOfDays if not provided
         if application.NumberOfDays is None:
             try:
@@ -141,6 +145,11 @@ class LeaveService:
         db_application = db.query(models.LeaveApplication).filter(models.LeaveApplication.LeaveApplicationID == application_id).first()
         if not db_application:
             raise HTTPException(status_code=404, detail="Leave application not found")
+        
+        # If dates are being updated, check for timesheet conflicts
+        if hasattr(application_update, 'StartDate') and hasattr(application_update, 'EndDate'):
+            if application_update.StartDate and application_update.EndDate:
+                check_timesheet_conflicts_for_leave_application(db, db_application.EmployeeID, application_update.StartDate, application_update.EndDate)
         
         update_data = application_update.dict(exclude_unset=True)
         for field, value in update_data.items():
@@ -277,11 +286,31 @@ class LeaveService:
         if approval.is_manager_approval:
             db_application.ManagerApprovalStatus = approval.approval_status
             db_application.ManagerApprovalAt = datetime.utcnow()
-            db_application.ManagerComments = approval.comments
+            # Store manager approval comment in Comments table
+            if approval.comments:
+                from api.comments.models import Comment
+                comment = Comment(
+                    EntityType="LeaveApplication",
+                    EntityID=application_id,
+                    CommenterID=approval.manager_id if hasattr(approval, 'manager_id') else None,
+                    CommenterRole="Manager",
+                    CommentText=f"Manager Approval: {approval.approval_status} - {approval.comments}"
+                )
+                db.add(comment)
         else:
             db_application.HRApprovalStatus = approval.approval_status
             db_application.HRApprovalAt = datetime.utcnow()
-            db_application.HRComments = approval.comments
+            # Store HR approval comment in Comments table
+            if approval.comments:
+                from api.comments.models import Comment
+                comment = Comment(
+                    EntityType="LeaveApplication",
+                    EntityID=application_id,
+                    CommenterID=approval.hr_approver_id if hasattr(approval, 'hr_approver_id') else None,
+                    CommenterRole="HR",
+                    CommentText=f"HR Approval: {approval.approval_status} - {approval.comments}"
+                )
+                db.add(comment)
         
         db.commit()
         db.refresh(db_application)
@@ -312,7 +341,18 @@ class LeaveService:
         db_application.ManagerID = approval.manager_id
         db_application.ManagerApprovalStatus = approval.approval_status
         db_application.ManagerApprovalAt = datetime.utcnow()
-        db_application.ManagerComments = approval.comments
+        
+        # Store manager approval comment in Comments table
+        if approval.comments:
+            from api.comments.models import Comment
+            comment = Comment(
+                EntityType="LeaveApplication",
+                EntityID=application_id,
+                CommenterID=approval.manager_id,
+                CommenterRole="Manager",
+                CommentText=f"Manager Approval: {approval.approval_status} - {approval.comments}"
+            )
+            db.add(comment)
         
         # Update overall status based on manager decision
         if approval.approval_status == "Approved":
@@ -349,7 +389,18 @@ class LeaveService:
         db_application.HRApproverID = approval.hr_approver_id
         db_application.HRApprovalStatus = approval.approval_status
         db_application.HRApprovalAt = datetime.utcnow()
-        db_application.HRComments = approval.comments
+        
+        # Store HR approval comment in Comments table
+        if approval.comments:
+            from api.comments.models import Comment
+            comment = Comment(
+                EntityType="LeaveApplication",
+                EntityID=application_id,
+                CommenterID=approval.hr_approver_id,
+                CommenterRole="HR",
+                CommentText=f"HR Approval: {approval.approval_status} - {approval.comments}"
+            )
+            db.add(comment)
         
         # Update overall status based on HR decision
         if approval.approval_status == "Approved":

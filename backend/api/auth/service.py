@@ -3,7 +3,7 @@ from typing import List, Optional
 from . import models, schemas
 from fastapi import HTTPException, status
 from passlib.context import CryptContext
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import jwt
 import os
 import hashlib
@@ -39,6 +39,44 @@ class AuthService:
         return create_access_token(data, expires_delta)
     
     @staticmethod
+    def check_employee_termination_status(db: Session, user_id: str) -> bool:
+        """
+        Check if an employee has been terminated.
+        
+        Args:
+            db: Database session
+            user_id: User ID to check
+            
+        Returns:
+            True if employee is terminated, False otherwise
+            
+        Raises:
+            HTTPException: If employee record not found
+        """
+        from api.employee.models import Employee
+        
+        # Get employee record for the user
+        employee = db.query(Employee).filter(
+            Employee.UserID == user_id
+        ).first()
+        
+        if not employee:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Employee record not found"
+            )
+        
+        # Check if employee is inactive
+        if not employee.IsActive:
+            return True
+        
+        # Check if employee has a termination date in the past
+        if employee.TerminationDate and employee.TerminationDate <= date.today():
+            return True
+        
+        return False
+    
+    @staticmethod
     def login(db: Session, login_request: schemas.LoginRequest):
         """User login with JWT token generation"""
         # Find user by username
@@ -58,6 +96,25 @@ class AuthService:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid username or password"
+            )
+        
+        # Check if employee has been terminated
+        try:
+            is_terminated = AuthService.check_employee_termination_status(db, user.UserID)
+            if is_terminated:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied. Your employment has been terminated."
+                )
+        except HTTPException as e:
+            # Re-raise HTTP exceptions from check_employee_termination_status
+            raise e
+        except Exception as e:
+            # Log the error but don't expose internal details
+            print(f"Error checking employee termination status: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Authentication error"
             )
         
         # Generate access token
@@ -128,6 +185,23 @@ class AuthService:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="User not found"
+                )
+            
+            # Check if employee has been terminated (for refresh tokens too)
+            try:
+                is_terminated = AuthService.check_employee_termination_status(db, user.UserID)
+                if is_terminated:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Access denied. Your employment has been terminated."
+                    )
+            except HTTPException as e:
+                raise e
+            except Exception as e:
+                print(f"Error checking employee termination status during token refresh: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Authentication error"
                 )
             
             # Generate new access token

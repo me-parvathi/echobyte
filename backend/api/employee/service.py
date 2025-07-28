@@ -20,6 +20,10 @@ class EmployeeService:
         return db.query(models.Employee).filter(models.Employee.EmployeeCode == employee_code).first()
     
     @staticmethod
+    def get_employee_by_user_id(db: Session, user_id: str) -> Optional[models.Employee]:
+        return db.query(models.Employee).filter(models.Employee.UserID == user_id).first()
+    
+    @staticmethod
     def get_employees(
         db: Session, 
         skip: int = 0, 

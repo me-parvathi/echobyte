@@ -16,11 +16,9 @@ class LeaveApplicationBase(BaseModel):
     ManagerID: Optional[int] = None
     ManagerApprovalStatus: Optional[str] = None
     ManagerApprovalAt: Optional[datetime] = None
-    ManagerComments: Optional[str] = None
     HRApproverID: Optional[int] = None
     HRApprovalStatus: Optional[str] = None
     HRApprovalAt: Optional[datetime] = None
-    HRComments: Optional[str] = None
 
 class LeaveApplicationCreate(BaseModel):
     EmployeeID: int
@@ -43,10 +41,8 @@ class LeaveApplicationUpdate(BaseModel):
     StatusCode: Optional[str] = None
     ManagerID: Optional[int] = None
     ManagerApprovalStatus: Optional[str] = None
-    ManagerComments: Optional[str] = None
     HRApproverID: Optional[int] = None
     HRApprovalStatus: Optional[str] = None
-    HRComments: Optional[str] = None
 
 class LeaveApplicationResponse(BaseModel):
     LeaveApplicationID: int
@@ -61,11 +57,9 @@ class LeaveApplicationResponse(BaseModel):
     ManagerID: Optional[int] = None
     ManagerApprovalStatus: Optional[str] = None
     ManagerApprovalAt: Optional[datetime] = None
-    ManagerComments: Optional[str] = None
     HRApproverID: Optional[int] = None
     HRApprovalStatus: Optional[str] = None
     HRApprovalAt: Optional[datetime] = None
-    HRComments: Optional[str] = None
     CreatedAt: datetime
     UpdatedAt: datetime
     
