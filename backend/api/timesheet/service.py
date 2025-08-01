@@ -39,9 +39,18 @@ class TimesheetService:
         return paginate_query(query, skip, limit, models.Timesheet.CreatedAt)
     
     @staticmethod
-    def get_timesheet(db: Session, timesheet_id: int) -> Optional[models.Timesheet]:
+    def get_timesheet(db: Session, timesheet_id: int, include_details: bool = False) -> Optional[models.Timesheet]:
         """Get a specific timesheet by ID"""
-        return db.query(models.Timesheet).filter(models.Timesheet.TimesheetID == timesheet_id).first()
+        timesheet = db.query(models.Timesheet).filter(models.Timesheet.TimesheetID == timesheet_id).first()
+        
+        if timesheet and include_details:
+            # Load details for the timesheet
+            details = db.query(models.TimesheetDetail).filter(
+                models.TimesheetDetail.TimesheetID == timesheet_id
+            ).order_by(models.TimesheetDetail.WorkDate).all()
+            timesheet.details = details
+        
+        return timesheet
     
 
     
@@ -207,43 +216,72 @@ class TimesheetService:
         # Get or create timesheet for this week
         timesheet = get_or_create_timesheet_for_date(db, daily_data.EmployeeID, daily_data.WorkDate)
         
-        # Check if detail already exists for this date
-        existing_detail = db.query(models.TimesheetDetail).filter(
-            models.TimesheetDetail.TimesheetID == timesheet.TimesheetID,
-            models.TimesheetDetail.WorkDate == daily_data.WorkDate
-        ).first()
-        
-        if existing_detail:
-            # Update existing detail
-            existing_detail.ProjectCode = daily_data.ProjectCode
-            existing_detail.TaskDescription = daily_data.TaskDescription
-            existing_detail.HoursWorked = daily_data.HoursWorked
-            existing_detail.IsOvertime = daily_data.IsOvertime
-            db.commit()
-            db.refresh(existing_detail)
+        # Handle potential race conditions by wrapping in try-catch
+        try:
+            # Check if detail already exists for this date
+            existing_detail = db.query(models.TimesheetDetail).filter(
+                models.TimesheetDetail.TimesheetID == timesheet.TimesheetID,
+                models.TimesheetDetail.WorkDate == daily_data.WorkDate
+            ).first()
             
-            # Update timesheet total hours
-            update_timesheet_total_hours(db, timesheet.TimesheetID)
+            if existing_detail:
+                # Update existing detail
+                existing_detail.ProjectCode = daily_data.ProjectCode
+                existing_detail.TaskDescription = daily_data.TaskDescription
+                existing_detail.HoursWorked = daily_data.HoursWorked
+                existing_detail.IsOvertime = daily_data.IsOvertime
+                db.commit()
+                db.refresh(existing_detail)
+                
+                # Update timesheet total hours
+                update_timesheet_total_hours(db, timesheet.TimesheetID)
+                
+                return existing_detail
+            else:
+                # Create new detail
+                detail = models.TimesheetDetail(
+                    TimesheetID=timesheet.TimesheetID,
+                    WorkDate=daily_data.WorkDate,
+                    ProjectCode=daily_data.ProjectCode,
+                    TaskDescription=daily_data.TaskDescription,
+                    HoursWorked=daily_data.HoursWorked,
+                    IsOvertime=daily_data.IsOvertime
+                )
+                db.add(detail)
+                db.commit()
+                db.refresh(detail)
+                
+                # Update timesheet total hours
+                update_timesheet_total_hours(db, timesheet.TimesheetID)
+                
+                return detail
+                
+        except Exception as e:
+            db.rollback()
+            # If it's a unique constraint violation on TimesheetDetails, it means the detail already exists
+            if "UNIQUE KEY constraint" in str(e) and "TimesheetDetails" in str(e):
+                # Try to get the existing detail and update it
+                existing_detail = db.query(models.TimesheetDetail).filter(
+                    models.TimesheetDetail.TimesheetID == timesheet.TimesheetID,
+                    models.TimesheetDetail.WorkDate == daily_data.WorkDate
+                ).first()
+                
+                if existing_detail:
+                    # Update existing detail
+                    existing_detail.ProjectCode = daily_data.ProjectCode
+                    existing_detail.TaskDescription = daily_data.TaskDescription
+                    existing_detail.HoursWorked = daily_data.HoursWorked
+                    existing_detail.IsOvertime = daily_data.IsOvertime
+                    db.commit()
+                    db.refresh(existing_detail)
+                    
+                    # Update timesheet total hours
+                    update_timesheet_total_hours(db, timesheet.TimesheetID)
+                    
+                    return existing_detail
             
-            return existing_detail
-        else:
-            # Create new detail
-            detail = models.TimesheetDetail(
-                TimesheetID=timesheet.TimesheetID,
-                WorkDate=daily_data.WorkDate,
-                ProjectCode=daily_data.ProjectCode,
-                TaskDescription=daily_data.TaskDescription,
-                HoursWorked=daily_data.HoursWorked,
-                IsOvertime=daily_data.IsOvertime
-            )
-            db.add(detail)
-            db.commit()
-            db.refresh(detail)
-            
-            # Update timesheet total hours
-            update_timesheet_total_hours(db, timesheet.TimesheetID)
-            
-            return detail
+            # Re-raise the exception if it's not a unique constraint violation we can handle
+            raise e
     
     @staticmethod
     def get_daily_entry(db: Session, employee_id: int, work_date: date) -> Optional[models.TimesheetDetail]:
@@ -378,6 +416,9 @@ class TimesheetService:
             models.Timesheet.WeekStartDate == week_start_date
         ).first()
         
+        print(f"DEBUG: Looking for timesheet for employee {employee_id}, week {week_start_date}")
+        print(f"DEBUG: Found current week timesheet: {current_week.TimesheetID if current_week else 'None'}")
+        
         # If no current week timesheet, create one
         if not current_week:
             current_week = models.Timesheet(
@@ -390,11 +431,16 @@ class TimesheetService:
             db.add(current_week)
             db.commit()
             db.refresh(current_week)
+            print(f"DEBUG: Created new timesheet: {current_week.TimesheetID}")
         
         # Get timesheet details for current week
         details = db.query(models.TimesheetDetail).filter(
             models.TimesheetDetail.TimesheetID == current_week.TimesheetID
         ).order_by(models.TimesheetDetail.WorkDate).all()
+        
+        print(f"DEBUG: Found {len(details)} timesheet details for timesheet {current_week.TimesheetID}")
+        for detail in details:
+            print(f"DEBUG: Detail - Date: {detail.WorkDate}, Hours: {detail.HoursWorked}, Project: {detail.ProjectCode}")
         
         # Attach details to current week
         current_week.details = details
@@ -402,19 +448,138 @@ class TimesheetService:
         # Get timesheet history if requested
         timesheet_history = []
         if include_history:
-            # Get recent timesheets (excluding current week)
             history_query = db.query(models.Timesheet).filter(
                 models.Timesheet.EmployeeID == employee_id,
-                models.Timesheet.TimesheetID != current_week.TimesheetID
+                models.Timesheet.WeekStartDate < week_start_date
             ).order_by(models.Timesheet.WeekStartDate.desc()).limit(history_limit)
             
             timesheet_history = history_query.all()
+            
+            # Load details for each historical timesheet
+            for hist_timesheet in timesheet_history:
+                hist_details = db.query(models.TimesheetDetail).filter(
+                    models.TimesheetDetail.TimesheetID == hist_timesheet.TimesheetID
+                ).order_by(models.TimesheetDetail.WorkDate).all()
+                hist_timesheet.details = hist_details
         
         return {
+            "employee": employee_profile,
             "current_week": current_week,
-            "timesheet_history": timesheet_history,
-            "employee_profile": employee_profile,
-            "total_count": len(timesheet_history) + 1,  # +1 for current week
+            "history": timesheet_history,
             "week_start_date": week_start_date,
             "week_end_date": week_end_date
-        } 
+        }
+
+    @staticmethod
+    def get_manager_subordinates_timesheets(
+        db: Session,
+        manager_id: int,
+        skip: int = 0,
+        limit: int = 100,
+        status_code: Optional[str] = None
+    ) -> dict:
+        """Get timesheets from subordinates that need approval"""
+        from api.employee import models as employee_models
+        
+        # Get all subordinates of the manager
+        subordinates = db.query(employee_models.Employee).filter(
+            employee_models.Employee.ManagerID == manager_id,
+            employee_models.Employee.IsActive == True
+        ).all()
+        
+        if not subordinates:
+            return {
+                "items": [],
+                "total_count": 0,
+                "page": 1,
+                "size": limit,
+                "has_next": False,
+                "has_previous": False
+            }
+        
+        # Get subordinate employee IDs
+        subordinate_ids = [sub.EmployeeID for sub in subordinates]
+        
+        # Build query for timesheets from subordinates
+        query = db.query(models.Timesheet).filter(
+            models.Timesheet.EmployeeID.in_(subordinate_ids)
+        )
+        
+        # Filter by status if provided
+        if status_code:
+            query = query.filter(models.Timesheet.StatusCode == status_code)
+        else:
+            # Default to showing submitted timesheets that need approval
+            query = query.filter(models.Timesheet.StatusCode == "Submitted")
+        
+        # Get total count before ordering
+        total_count = query.count()
+        
+        # Order by submission date (most recent first)
+        query = query.order_by(models.Timesheet.SubmittedAt.desc())
+        
+        # Apply pagination
+        items = query.offset(skip).limit(limit).all()
+        
+        # Calculate pagination info
+        page = (skip // limit) + 1 if limit > 0 else 1
+        has_next = (skip + limit) < total_count
+        has_previous = skip > 0
+        
+        result = {
+            "items": items,
+            "total_count": total_count,
+            "page": page,
+            "size": limit,
+            "has_next": has_next,
+            "has_previous": has_previous
+        }
+        
+        print(f"DEBUG: paginate_query result: {result}")
+        print(f"DEBUG: result keys: {result.keys() if isinstance(result, dict) else 'Not a dict'}")
+        
+        # Load employee details for each timesheet
+        timesheets_with_employees = []
+        for timesheet in result["items"]:
+            employee = db.query(employee_models.Employee).filter(
+                employee_models.Employee.EmployeeID == timesheet.EmployeeID
+            ).first()
+            
+            # Convert timesheet to dict and add employee info
+            timesheet_dict = {
+                "TimesheetID": timesheet.TimesheetID,
+                "EmployeeID": timesheet.EmployeeID,
+                "WeekStartDate": timesheet.WeekStartDate,
+                "WeekEndDate": timesheet.WeekEndDate,
+                "TotalHours": float(timesheet.TotalHours) if timesheet.TotalHours else 0.0,
+                "StatusCode": timesheet.StatusCode,
+                "SubmittedAt": timesheet.SubmittedAt,
+                "ApprovedByID": timesheet.ApprovedByID,
+                "ApprovedAt": timesheet.ApprovedAt,
+                "Comments": timesheet.Comments,
+                "CreatedAt": timesheet.CreatedAt,
+                "UpdatedAt": timesheet.UpdatedAt,
+                "employee": None
+            }
+            
+            if employee:
+                # Get designation name safely
+                designation_name = None
+                if hasattr(employee, 'designation') and employee.designation:
+                    designation_name = employee.designation.DesignationName
+                
+                timesheet_dict["employee"] = {
+                    "EmployeeID": employee.EmployeeID,
+                    "FirstName": employee.FirstName,
+                    "MiddleName": employee.MiddleName,
+                    "LastName": employee.LastName,
+                    "CompanyEmail": employee.CompanyEmail,
+                    "DesignationName": designation_name
+                }
+            
+            timesheets_with_employees.append(timesheet_dict)
+        
+        result["items"] = timesheets_with_employees
+        
+        print(f"DEBUG: Final result: {result}")
+        return result 

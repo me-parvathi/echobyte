@@ -17,7 +17,7 @@ from api.auth import models, schemas
 # JWT settings
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 240  # 4 hours
 
 # Security scheme
 oauth2_scheme = HTTPBearer()
@@ -59,9 +59,6 @@ def check_employee_termination_status(db: Session, user_id: str) -> bool:
         
     Returns:
         True if employee is terminated, False otherwise
-        
-    Raises:
-        HTTPException: If employee record not found
     """
     from api.employee.models import Employee
     
@@ -70,11 +67,10 @@ def check_employee_termination_status(db: Session, user_id: str) -> bool:
         Employee.UserID == user_id
     ).first()
     
+    # If no employee record exists, assume not terminated
+    # This allows users without employee records to still authenticate
     if not employee:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Employee record not found"
-        )
+        return False
     
     # Check if employee is inactive
     if not employee.IsActive:

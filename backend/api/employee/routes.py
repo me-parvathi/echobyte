@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from core.database import get_db
-from core.auth import get_current_active_user
+from core.auth import get_current_active_user, require_manager
 from . import schemas, service
 
 router = APIRouter()
@@ -19,6 +19,65 @@ def get_current_employee(
         raise HTTPException(status_code=404, detail="Employee not found for current user")
     return employee
 
+# Manager-specific routes (require manager role)
+@router.get("/manager/subordinates", response_model=List[schemas.EmployeeResponse])
+def get_manager_subordinates(
+    current_user = Depends(require_manager),
+    db: Session = Depends(get_db)
+):
+    """Get all subordinates for the current manager"""
+    employee = service.EmployeeService.get_employee_by_user_id(db, current_user.UserID)
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found for current user")
+    
+    subordinates = service.EmployeeService.get_subordinates(db, employee.EmployeeID)
+    return subordinates
+
+@router.get("/manager/batch", response_model=schemas.ManagerBatchResponse)
+def get_manager_batch_data(
+    current_user = Depends(require_manager),
+    db: Session = Depends(get_db)
+):
+    """Get manager data and subordinates in a single request for better performance"""
+    employee = service.EmployeeService.get_employee_by_user_id(db, current_user.UserID)
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found for current user")
+    
+    return service.EmployeeService.get_manager_batch_data(db, employee.EmployeeID)
+
+@router.get("/manager/subordinates/{employee_id}", response_model=schemas.EmployeeResponse)
+def get_manager_subordinate(
+    employee_id: int,
+    current_user = Depends(require_manager),
+    db: Session = Depends(get_db)
+):
+    """Get a specific subordinate for the current manager"""
+    manager_employee = service.EmployeeService.get_employee_by_user_id(db, current_user.UserID)
+    if not manager_employee:
+        raise HTTPException(status_code=404, detail="Employee not found for current user")
+    
+    # Verify the employee is actually a subordinate of the current manager
+    subordinate = service.EmployeeService.get_employee(db, employee_id)
+    if not subordinate:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    
+    if subordinate.ManagerID != manager_employee.EmployeeID:
+        raise HTTPException(status_code=403, detail="Access denied. Employee is not your subordinate")
+    
+    return subordinate
+
+@router.get("/manager/team-overview", response_model=schemas.ManagerTeamOverviewResponse)
+def get_manager_team_overview(
+    current_user = Depends(require_manager),
+    db: Session = Depends(get_db)
+):
+    """Get team overview for the current manager"""
+    manager_employee = service.EmployeeService.get_employee_by_user_id(db, current_user.UserID)
+    if not manager_employee:
+        raise HTTPException(status_code=404, detail="Employee not found for current user")
+    
+    return service.EmployeeService.get_manager_team_overview(db, manager_employee.EmployeeID)
+
 # Employee routes
 @router.get("/", response_model=schemas.EmployeeListResponse)
 def get_employees(
@@ -27,14 +86,14 @@ def get_employees(
     is_active: Optional[bool] = None,
     team_id: Optional[int] = None,
     department_id: Optional[int] = None,
+    search: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """Get list of employees with optional filtering"""
-    employees = service.EmployeeService.get_employees(
+    employees, total = service.EmployeeService.get_employees_with_count(
         db, skip=skip, limit=limit, 
-        is_active=is_active, team_id=team_id, department_id=department_id
+        is_active=is_active, team_id=team_id, department_id=department_id, search=search
     )
-    total = len(employees)  # In a real app, you'd get total count separately
     return schemas.EmployeeListResponse(
         employees=employees, total=total, page=skip//limit + 1, size=limit
     )

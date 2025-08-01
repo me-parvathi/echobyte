@@ -15,7 +15,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # JWT settings
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-here")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 240  # 4 hours
 
 class AuthService:
     """Authentication service for user login/logout and token management"""
@@ -49,9 +49,6 @@ class AuthService:
             
         Returns:
             True if employee is terminated, False otherwise
-            
-        Raises:
-            HTTPException: If employee record not found
         """
         from api.employee.models import Employee
         
@@ -60,11 +57,10 @@ class AuthService:
             Employee.UserID == user_id
         ).first()
         
+        # If no employee record exists, assume not terminated
+        # This allows users without employee records to still authenticate
         if not employee:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Employee record not found"
-            )
+            return False
         
         # Check if employee is inactive
         if not employee.IsActive:
@@ -457,6 +453,8 @@ class EmployeeRoleService:
     @staticmethod
     def get_employee_roles_with_details(db: Session, employee_id: Optional[int] = None, is_active: Optional[bool] = None) -> List[schemas.EmployeeRoleWithDetailsResponse]:
         """Get employee role assignments with role details"""
+        print(f"🔍 DEBUG: get_employee_roles_with_details called with employee_id: {employee_id}")
+        
         query = db.query(models.EmployeeRole, models.Role).join(
             models.Role, models.EmployeeRole.RoleID == models.Role.RoleID
         )
@@ -467,9 +465,11 @@ class EmployeeRoleService:
             query = query.filter(models.EmployeeRole.IsActive == is_active)
         
         results = query.all()
+        print(f"📊 DEBUG: Query returned {len(results)} role assignments")
         
         role_assignments = []
         for assignment, role in results:
+            print(f"   - Role: {role.RoleName} (ID: {role.RoleID}) for Employee: {assignment.EmployeeID}")
             role_assignments.append(schemas.EmployeeRoleWithDetailsResponse(
                 AssignmentID=assignment.EmployeeRoleID,
                 EmployeeID=assignment.EmployeeID,
@@ -482,6 +482,7 @@ class EmployeeRoleService:
                 UpdatedAt=assignment.AssignedAt   # Using AssignedAt as UpdatedAt
             ))
         
+        print(f"✅ DEBUG: Returning {len(role_assignments)} role assignments")
         return role_assignments
     
     @staticmethod

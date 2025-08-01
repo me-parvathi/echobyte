@@ -238,26 +238,55 @@ def get_or_create_timesheet_for_date(
     """
     week_start, week_end = get_week_dates(work_date)
     
-    # Check if timesheet exists for this week
-    timesheet = db.query(models.Timesheet).filter(
-        models.Timesheet.EmployeeID == employee_id,
-        models.Timesheet.WeekStartDate == week_start
-    ).first()
-    
-    if not timesheet:
-        # Create new draft timesheet
-        timesheet = models.Timesheet(
-            EmployeeID=employee_id,
-            WeekStartDate=week_start,
-            WeekEndDate=week_end,
-            StatusCode="Draft",
-            TotalHours=0.0
-        )
-        db.add(timesheet)
-        db.commit()
-        db.refresh(timesheet)
-    
-    return timesheet
+    # Use a retry mechanism to handle race conditions
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            # Check if timesheet exists for this week
+            timesheet = db.query(models.Timesheet).filter(
+                models.Timesheet.EmployeeID == employee_id,
+                models.Timesheet.WeekStartDate == week_start
+            ).first()
+            
+            if not timesheet:
+                # Create new draft timesheet
+                timesheet = models.Timesheet(
+                    EmployeeID=employee_id,
+                    WeekStartDate=week_start,
+                    WeekEndDate=week_end,
+                    StatusCode="Draft",
+                    TotalHours=0.0
+                )
+                db.add(timesheet)
+                db.commit()
+                db.refresh(timesheet)
+            
+            return timesheet
+            
+        except Exception as e:
+            # If it's a unique constraint violation, try to get the existing timesheet
+            if "UNIQUE KEY constraint" in str(e) or "duplicate key" in str(e).lower():
+                db.rollback()
+                # Try to get the existing timesheet that was created by another request
+                timesheet = db.query(models.Timesheet).filter(
+                    models.Timesheet.EmployeeID == employee_id,
+                    models.Timesheet.WeekStartDate == week_start
+                ).first()
+                
+                if timesheet:
+                    return timesheet
+                else:
+                    # If we still can't find it, retry
+                    if attempt < max_retries - 1:
+                        continue
+                    else:
+                        raise e
+            else:
+                # For other errors, don't retry
+                raise e
+     
+    # This should never be reached, but just in case
+    raise Exception("Failed to get or create timesheet after multiple attempts")
 
 
 def calculate_weekly_total_hours(db: Session, timesheet_id: int) -> float:

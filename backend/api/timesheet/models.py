@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, Date, Boolean, DateTime, Foreign
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from core.database import Base
+from api.employee.models import Employee
 
 class TimesheetStatus(Base):
     __tablename__ = "TimesheetStatuses"

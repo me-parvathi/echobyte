@@ -1,0 +1,283 @@
+
+Ran tool
+
+Ran tool
+
+Ran tool
+
+Ran tool
+
+Ran tool
+
+Ran tool
+
+Ran tool
+
+Ran tool
+
+Ran tool
+
+Read file: frontend/lib/database-schema.ts
+
+Read file: frontend/lib/utils.ts
+
+Read file: frontend/lib/workflow-manager.ts
+
+Read file: frontend/app/page.tsx
+
+Read file: frontend/app/dashboard/page.tsx
+
+Read file: frontend/components/dashboards/employee-dashboard.tsx
+
+Read file: frontend/components/dashboards/employee-dashboard.tsx
+
+Read file: frontend/components/features/time-sheet.tsx
+
+Read file: frontend/components/features/leave-application.tsx
+
+Read file: frontend/components/features/support-ticket.tsx
+
+Ran tool
+
+Ran tool
+
+Below is a practical “field-guide” you can hand to a backend-developer so they can expose the right endpoints, and to a frontend-developer so they know exactly where to swap the current mock data for real network calls.
+
+────────────────────────────────
+1.  INVENTORY OF PAGES & COMPONENTS
+────────────────────────────────
+Paths are shown relative to `/frontend`.
+
+A. Pages (Next-JS “route segments”)
+• `app/page.tsx`                → Login / Sign-in page  
+• `app/dashboard/page.tsx`      → Dynamic dashboard (renders one of the 4 dashboards below based on role)  
+• `app/layout.tsx`              → Global HTML/head, theme loader  
+
+B. Top-level Dashboard shells  
+`components/dashboards/…`
+• `employee-dashboard.tsx`  
+• `manager-dashboard.tsx`  
+• `hr-dashboard.tsx`  
+• `it-dashboard.tsx`
+
+C. Feature modules (each one is a self-contained screen that the dashboards route to)  
+`components/features/…`
+• asset-management.tsx  
+• career-portal.tsx  
+• employee-directory.tsx  
+• employee-profile.tsx  
+• feedback-form.tsx  
+• hr-management.tsx  
+• induction-materials.tsx  
+• learning-modules.tsx  
+• leave-application.tsx  
+• manager-approvals.tsx  
+• pending-approvals.tsx  
+• quick-actions.tsx  
+• settings-panel.tsx  
+• support-ticket.tsx  
+• team-info.tsx  
+• time-sheet.tsx
+
+D. Shared layout / helpers  
+• `app-sidebar.tsx`, `dashboard-header.tsx`, `components/ui/*` (≈60 reusable UI primitives)  
+• hooks: `hooks/use-toast.tsx`, `hooks/use-mobile.tsx`  
+• lib: `lib/database-schema.ts`, `lib/workflow-manager.ts` (local-storage mock “backend”)
+
+────────────────────────────────
+2.  WHAT DATA IS CURRENTLY SHOWN & WHERE IT COMES FROM
+────────────────────────────────
+Only local constants or LocalStorage are used – there are **no real API calls yet**.  
+The table below lists every bundle of mocked data the UI renders.
+
+| Component / Page | Mock constants currently rendered | Purpose on screen |
+|------------------|-----------------------------------|-------------------|
+| `app/page.tsx` (Login) | `mockUsers` (4 hard-coded users) | Authenticates & seeds LocalStorage |
+| employee-dashboard | `stats`, `quickActions`, `recentActivities`, `upcomingEvents` | At-a-glance cards |
+| manager-dashboard / hr-dashboard / it-dashboard | similar `stats` arrays | Role-specific metrics |
+| time-sheet | `timeEntries`, `projects`, `previousTimesheets` | Weekly grid, project picker, history |
+| leave-application | `leaveBalance`, `leaveHistory` | Leave cards + past requests |
+| support-ticket | `departments`, `existingTickets` | Form drop-downs & ticket table |
+| asset-management | `assets`, `categories` | Asset list, filter chips |
+| employee-directory | `employees`, `departments`, `roles` | Table & filters |
+| career-portal | `jobOpenings`, `departments`, `locations` | Job board |
+| hr-management | `employees`, `onboardingTasks`, `hrTickets`, `departmentStats` | HR console |
+| induction-materials | `materials`, `categories` | E-learning library |
+| learning-modules | `learningTracks`, `azureQuizzes`, `earnedBadges` | LMS dashboard |
+| manager-approvals | `leaveRequests`, `timesheetRequests`, `expenseRequests` | Approval queues |
+| quick-actions | `quickActionButtons`, `recentActivities`, `upcomingTasks`, `dailyTips` | Home widgets |
+| team-info | `allEmployees` (plus a derived `chain`) | Org-chart & manager tree |
+
+All of these live inside their respective `.tsx` files as `const … = [ … ]` (or objects), and many use `lib/workflow-manager.ts` which itself saves/fetches to **LocalStorage** as a fake back-end.
+
+────────────────────────────────
+3.  REPLACING MOCKS WITH REAL BACKEND CALLS
+────────────────────────────────
+The procedure is the same everywhere; what changes is the endpoint & shape of the payload. Follow the 5-step recipe below per feature.
+
+STEP-BY-STEP RECIPE
+1. Backend dev exposes REST (or GraphQL) endpoint.  
+   • Use the “suggested path” column as a starting point – they mirror `lib/database-schema.ts` but expand where needed.  
+   • Return JSON in the exact shape the component already expects so the swap is painless.
+
+2. Create a thin **API service file** per domain in `/frontend/lib/api/…` (e.g. `timesheet.ts`, `leave.ts`).  
+   ```ts
+   // lib/api/timesheet.ts
+   import { Timesheet, TimesheetSummary } from "../types"
+   export async function fetchTimesheet(id: string): Promise<Timesheet> {
+     return fetch(`/api/timesheets/${id}`).then(r => r.json())
+   }
+   export async function fetchTimesheetHistory(userId: string): Promise<TimesheetSummary[]> { … }
+   export async function postTimesheet(payload: TimesheetDraft) { … }
+   ```
+
+3. Inside the component:  
+   • Replace the `const … = […]` with `React.useEffect` + state.  
+   • While data is loading show skeletons or a “shimmer” (already available in `components/ui/skeleton.tsx`).  
+   • On mutation (save / submit) call the POST/PUT helper and then re-fetch or optimistic-update the local state.
+
+4. Remove all LocalStorage writes that were only supporting the mock workflow (keep those that really are client prefs).
+
+5. When all mocks are gone, delete `lib/workflow-manager.ts`.
+
+────────────────────────────────
+ENDPOINT-BY-ENDPOINT CHECKLIST
+────────────────────────────────
+Below is a condensed mapping of every mock bundle to a backend route, including method & minimal schema.  Use it as a to-do list:
+
+| UI file (feature) | Suggested endpoint | Method(s) | Expected response payload |
+|-------------------|--------------------|-----------|---------------------------|
+| app/page.tsx (login) | `POST /api/auth/login` | POST | `{ token, user: {id,email,name,role,dept,…} }` |
+| dashboards (all) – stats | `GET /api/metrics/{role}` | GET | `{ stats:[{title,value,subtitle?}] }` |
+| time-sheet | `GET /api/timesheets?userId=`<uid> | GET | `[ { id, weekEnding, totalHours, … } ]` |
+|                 | `POST /api/timesheets` | POST | `{ id }` |
+|                 | `PUT /api/timesheets/{id}` (submit) | PUT | 204 |
+| leave-application – balance | `GET /api/leave/balance?userId=` | GET | `[ { type, available, used, total } ]` |
+|                          – history | `GET /api/leave/requests?userId=` | GET | `[ { id,type,start,end,status,reason } ]` |
+|                          – submit | `POST /api/leave/requests` | POST | `{ id }` |
+| support-ticket – departments | `GET /api/departments/support` | GET | `[ { value,label,description,contact } ]` |
+|                     – list tickets | `GET /api/support/tickets?userId=` | GET | `[ { id,subject,department,priority,status,… } ]` |
+|                     – create | `POST /api/support/tickets` | POST | `{ id }` |
+| asset-management | `GET /api/assets` (with query params) | GET | `[ { id,name,category,status,… } ]` |
+|                          | `POST /api/assets` / `PUT /api/assets/{id}` | POST/PUT | 201 / 204 |
+| employee-directory | `GET /api/users?dept=&role=` | GET | `[ { id,name,email,department,role,… } ]` |
+| career-portal – jobs | `GET /api/jobs?status=open` | GET | `[ { id,title,department,location,postedAt,description } ]` |
+| hr-management – tickets | `GET /api/hr/tickets` | GET | `[…]` |
+| induction-materials | `GET /api/learning/induction-materials` | GET | `[ { id,title,category,url } ]` |
+| learning-modules – tracks/quizzes | `GET /api/learning/tracks?userId=` | GET | `[ { id,title,progress,… } ]` |
+| manager-approvals | `GET /api/workflow/pending?managerId=` | GET | `{ leave:[…], timesheets:[…], expenses:[…] }` |
+| team-info | `GET /api/users/team?managerId=` | GET | `[ { id,name,position,managerId } ]` |
+
+(Feel free to collapse or split endpoints; e.g. you might move “leave” under `/api/workflow`.)
+
+────────────────────────────────
+ADDITIONAL IMPLEMENTATION NOTES
+────────────────────────────────
+1. **Type-safety:** Generate shared TypeScript types from your FastAPI/Pydantic models (e.g. `datamodel-codegen > frontend/types.ts`) so both sides agree on schemas automatically.
+
+2. **Auth flow:** Frontend already stores data in LocalStorage; switch to storing a JWT and put a `fetcher.ts` wrapper that automatically includes `Authorization: Bearer …` and handles 401 redirects to `/`.
+
+3. **Pagination & filters:** Components such as Asset-Management or Employee-Directory already have filter UI – make sure endpoints accept `?page=`, `?search=` etc. and return `{ items, totalPages }`.
+
+4. **Optimistic updates:** Time-sheet “Save Draft” and “Submit” buttons can immediately update UI and then call the API; on failure, revert and toast an error (toast utility exists).
+
+5. **Realtime / polling:** For dashboards’ stats you can start with `GET`, then upgrade to Server-Sent-Events / WebSocket if live numbers are required.
+
+With this mapping in hand, the backend team knows exactly what to implement, and the frontend team can systematically replace each `const mock = […]` block with real data in just a few lines of code per file.
+
+
+FILES THAT REQUIRE CHANGES  
+(edit = replace hard-coded data / LocalStorage plumbing with real API calls)
+
+Pages & Layout  
+1. `app/page.tsx` – swap `mockUsers` auth logic for call to `POST /api/auth/login`  
+2. `app/dashboard/page.tsx` – replace LocalStorage look-ups with token-decode / `GET /api/users/me`
+
+Dashboard Shells  
+3. `components/dashboards/employee-dashboard.tsx`  
+4. `components/dashboards/manager-dashboard.tsx`  
+5. `components/dashboards/hr-dashboard.tsx`  
+6. `components/dashboards/it-dashboard.tsx`  
+   • Remove `stats`, `quickActions`, etc. arrays → fetch `GET /api/metrics/<role>`
+
+Feature Modules (each file contains one or more `const … = [ … ]` mocks)  
+7. `components/features/time-sheet.tsx`  
+8. `components/features/leave-application.tsx`  
+9. `components/features/support-ticket.tsx`  
+10. `components/features/asset-management.tsx`  
+11. `components/features/employee-directory.tsx`  
+12. `components/features/career-portal.tsx`  
+13. `components/features/hr-management.tsx`  
+14. `components/features/induction-materials.tsx`  
+15. `components/features/learning-modules.tsx`  
+16. `components/features/manager-approvals.tsx`  
+17. `components/features/pending-approvals.tsx`  
+18. `components/features/quick-actions.tsx`  
+19. `components/features/team-info.tsx`
+
+Utility / Mock-backend cleanup  
+20. `lib/workflow-manager.ts` – delete or refactor to thin wrapper around real workflow endpoints  
+21. `components/hooks/use-toast.ts` (optional): centralise API error handling  
+22. Any component that calls `localStorage.setItem("userType" …)` (search & update token storage)
+
+───────────────────────────────
+NEW FILES TO CREATE
+(keep code minimal for each; just signatures)
+
+• `lib/api/fetcher.ts`  
+  – Purpose: centralised `fetch` wrapper (base URL, JSON handling, auth header)  
+  – Functions: `apiGet(path)`, `apiPost(path, body)`, `apiPut(path, body)`, `apiDelete(path)`
+
+• `lib/api/auth.ts`  
+  – login / logout helpers  
+  – Functions: `login(email,password)`, `logout()`, `getCurrentUser()`
+
+• `lib/api/timesheet.ts`  
+  – Timesheet CRUD  
+  – Functions: `getWeekly(userId,weekEnd)`, `saveDraft(data)`, `submit(id)`, `history(userId)`
+
+• `lib/api/leave.ts`  
+  – Leave balances & requests  
+  – Functions: `getBalance(userId)`, `listRequests(userId)`, `createRequest(payload)`
+
+• `lib/api/support.ts`  
+  – Support ticket endpoints  
+  – Functions: `getDepartments()`, `listTickets(userId)`, `createTicket(payload)`
+
+• `lib/api/assets.ts`  
+  – Asset catalogue CRUD  
+  – Functions: `list(filters)`, `create(asset)`, `update(id,patch)`, `remove(id)`
+
+• `lib/api/users.ts`  
+  – Directory & team queries  
+  – Functions: `list(params)`, `get(id)`, `team(managerId)`
+
+• `lib/api/learning.ts`  
+  – Learning & induction data  
+  – Functions: `listMaterials()`, `listTracks(userId)`, `listBadges(userId)`
+
+• `lib/api/metrics.ts`  
+  – Dashboard summary numbers  
+  – Functions: `getRoleMetrics(role,userId)`
+
+• `lib/api/jobs.ts`  
+  – Career portal job board  
+  – Functions: `listOpenings(filters)`, `apply(jobId,cv)`
+
+• `lib/api/workflow.ts`  
+  – Manager approvals / workflow status  
+  – Functions: `getPending(managerId)`, `updateStatus(requestId,status,payload)`
+
+• `lib/types.ts`  
+  – Shared TS interfaces generated from backend schemas  
+  – Exports: `User`, `Timesheet`, `LeaveRequest`, `Ticket`, `Asset`, etc.
+
+• `hooks/useAuth.ts`  
+  – React hook for auth state & token refresh  
+  – Functions: `useAuth()` returns `{user,login,logout}`
+
+• `hooks/useFetch.ts` (optional)  
+  – SWR/React-Query wrapper around `fetcher`  
+  – Functions: `useFetch(key,fn)` for caching & revalidation
+
+That’s the complete modification matrix and the small set of new supporting files needed to wire the frontend onto the real backend without altering overall UI behaviour.

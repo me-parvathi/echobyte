@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from core.database import get_db
+from core.auth import get_current_active_user
 from . import schemas, service
 from datetime import date
 from decimal import Decimal
@@ -146,6 +147,80 @@ def delete_leave_balance(balance_id: int, db: Session = Depends(get_db)):
     """Delete a leave balance"""
     service.LeaveService.delete_leave_balance(db, balance_id)
     return None
+
+# Employee-specific leave balance routes (require authentication, restricted to own data)
+@router.get("/my/balances", response_model=List[schemas.LeaveBalanceResponse])
+def get_my_leave_balances(
+    year: Optional[int] = None,
+    current_user = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get current employee's leave balances"""
+    # Get employee ID for current user
+    from api.employee.models import Employee
+    employee = db.query(Employee).filter(
+        Employee.UserID == current_user.UserID,
+        Employee.IsActive == True
+    ).first()
+    
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found for current user")
+    
+    return service.LeaveService.get_leave_balances(db, employee.EmployeeID, year)
+
+@router.get("/my/balance/summary")
+def get_my_leave_balance_summary(
+    current_user = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get current employee's leave balance summary for current year (PTO and SICK only)"""
+    # Get employee ID for current user
+    from api.employee.models import Employee
+    employee = db.query(Employee).filter(
+        Employee.UserID == current_user.UserID,
+        Employee.IsActive == True
+    ).first()
+    
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found for current user")
+    
+    # Get current year
+    from datetime import datetime
+    current_year = datetime.now().year
+    
+    # Get leave balances for current year, filtered to only PTO and SICK types
+    balances = service.LeaveService.get_leave_balances_by_type_codes(
+        db, 
+        employee.EmployeeID, 
+        current_year, 
+        ['PTO', 'SICK']
+    )
+    
+    # Calculate summary using Decimal for precision
+    from decimal import Decimal
+    
+    total_entitled = Decimal('0')
+    total_used = Decimal('0')
+    total_remaining = Decimal('0')
+    
+    for balance in balances:
+        total_entitled += balance.EntitledDays
+        total_used += balance.UsedDays
+        total_remaining += (balance.EntitledDays - balance.UsedDays)
+    
+    # Debug logging
+    print(f"DEBUG: Found {len(balances)} PTO/SICK balances for employee {employee.EmployeeID}")
+    for balance in balances:
+        print(f"DEBUG: Balance - Type: {balance.leave_type.LeaveCode}, Entitled: {balance.EntitledDays}, Used: {balance.UsedDays}")
+    
+    return {
+        "employee_id": employee.EmployeeID,
+        "year": current_year,
+        "total_entitled_days": round(float(total_entitled), 1),
+        "total_used_days": round(float(total_used), 1),
+        "total_remaining_days": round(float(total_remaining), 1),
+        "balances": balances
+    }
 
 # Approval routes
 @router.post("/applications/{application_id}/approve")

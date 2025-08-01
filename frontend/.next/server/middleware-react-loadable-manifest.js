@@ -1,0 +1,1 @@
+self.__REACT_LOADABLE_MANIFEST="{\"hooks/use-user-info.tsx -> @/lib/api\":{\"id\":\"hooks/use-user-info.tsx -> @/lib/api\",\"files\":[\"static/chunks/_app-pages-browser_lib_api_ts.js\"]}}"

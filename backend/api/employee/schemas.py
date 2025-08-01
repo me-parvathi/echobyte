@@ -199,4 +199,26 @@ class EmployeeListResponse(BaseModel):
     employees: List[EmployeeResponse]
     total: int
     page: int
-    size: int 
+    size: int
+
+# Manager-specific schemas
+class ManagerTeamOverviewResponse(BaseModel):
+    manager: EmployeeResponse
+    subordinates: List[EmployeeResponse]
+    total_subordinates: int
+    active_subordinates: int
+    team_info: dict  # Will contain team and department information
+    
+    class Config:
+        from_attributes = True
+
+class ManagerBatchResponse(BaseModel):
+    manager: EmployeeResponse
+    subordinates: List[EmployeeResponse]
+    total_subordinates: int
+    active_subordinates: int
+    team_info: dict
+    last_updated: str
+    
+    class Config:
+        from_attributes = True 

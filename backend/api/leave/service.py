@@ -231,6 +231,22 @@ class LeaveService:
         return query.all()
 
     @staticmethod
+    def get_leave_balances_by_type_codes(db: Session, employee_id: Optional[int] = None, year: Optional[int] = None, leave_codes: Optional[List[str]] = None):
+        """Get leave balances with optional filtering by leave type codes"""
+        query = db.query(models.LeaveBalance).join(models.LeaveType)
+        
+        if employee_id is not None:
+            query = query.filter(models.LeaveBalance.EmployeeID == employee_id)
+        
+        if year is not None:
+            query = query.filter(models.LeaveBalance.Year == year)
+        
+        if leave_codes is not None:
+            query = query.filter(models.LeaveType.LeaveCode.in_(leave_codes))
+        
+        return query.all()
+
+    @staticmethod
     def get_leave_balance(db: Session, balance_id: int):
         """Get a specific leave balance by ID"""
         return db.query(models.LeaveBalance).filter(models.LeaveBalance.BalanceID == balance_id).first()

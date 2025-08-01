@@ -58,6 +58,23 @@ class TimesheetWithDetailsResponse(TimesheetBase):
 class TimesheetListResponse(ListResponse):
     items: List[TimesheetResponse]
 
+# Timesheet response with employee information for manager view
+class TimesheetWithEmployeeResponse(TimesheetBase):
+    TimesheetID: int
+    SubmittedAt: Optional[datetime] = None
+    ApprovedByID: Optional[int] = None
+    ApprovedAt: Optional[datetime] = None
+    CreatedAt: datetime
+    UpdatedAt: datetime
+    employee: Optional[dict] = None  # Basic employee info
+    
+    class Config:
+        from_attributes = True
+
+# List response for manager subordinates timesheets
+class TimesheetWithEmployeeListResponse(ListResponse):
+    items: List[TimesheetWithEmployeeResponse]
+
 # Timesheet Detail schemas
 class TimesheetDetailBase(BaseModel):
     TimesheetID: int

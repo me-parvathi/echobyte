@@ -37,8 +37,8 @@ class DatabaseConfig:
         self.driver = os.getenv("DB_DRIVER", "ODBC+Driver+18+for+SQL+Server")
         
         # Connection pool settings - increased for better handling
-        self.pool_size = int(os.getenv("DB_POOL_SIZE", "15"))
-        self.max_overflow = int(os.getenv("DB_MAX_OVERFLOW", "30"))
+        self.pool_size = int(os.getenv("DB_POOL_SIZE", "25"))
+        self.max_overflow = int(os.getenv("DB_MAX_OVERFLOW", "50"))
         self.pool_timeout = int(os.getenv("DB_POOL_TIMEOUT", "60"))
         self.pool_recycle = int(os.getenv("DB_POOL_RECYCLE", "1800"))  # 30 minutes
         

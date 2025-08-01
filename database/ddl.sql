@@ -350,7 +350,6 @@ CREATE TABLE dbo.TimesheetDetails (
     DetailID       INT            IDENTITY(1,1) PRIMARY KEY,
     TimesheetID    INT            NOT NULL,
     WorkDate       DATE           NOT NULL,
-    ProjectCode    NVARCHAR(50)   NULL,
     TaskDescription NVARCHAR(200) NULL,
     HoursWorked    DECIMAL(4,2)   NOT NULL CHECK (HoursWorked BETWEEN 0 AND 24),
     IsOvertime     BIT            NOT NULL CONSTRAINT DF_TimesheetDetails_IsOvertime DEFAULT (0),
@@ -1134,6 +1133,7 @@ CREATE TABLE dbo.TicketAttachments (
     CONSTRAINT FK_TicketAttachments_Ticket     FOREIGN KEY (TicketID)     REFERENCES dbo.Tickets(TicketID),
     CONSTRAINT FK_TicketAttachments_UploadedBy FOREIGN KEY (UploadedByID) REFERENCES dbo.Employees(EmployeeID)
 );
+GO
 
 CREATE OR ALTER TRIGGER dbo.tr_Employees_DisableOnTermination
 ON dbo.Employees
@@ -1157,3 +1157,119 @@ BEGIN
         AND CAST(i.TerminationDate AS DATE) <= CAST(GETDATE() AS DATE);
 END;
 GO
+
+
+/* ============================================================
+   13.  Projects
+   ============================================================ */
+
+CREATE TABLE dbo.ProjectStatuses (
+    ProjectStatusCode NVARCHAR(20) NOT NULL PRIMARY KEY,
+    ProjectStatusName NVARCHAR(50) NOT NULL
+);
+INSERT INTO dbo.ProjectStatuses (ProjectStatusCode, ProjectStatusName) VALUES
+ ('Planned','Planned'),
+ ('Active','Active'),
+ ('On-Hold','On Hold'),
+ ('Completed','Completed'),
+ ('Closed','Closed'),
+ ('Cancelled','Cancelled');
+
+CREATE TABLE dbo.Projects (
+    ProjectID       INT            IDENTITY(1,1)  PRIMARY KEY,
+    ProjectCode     NVARCHAR(20)   NOT NULL UNIQUE,          -- e.g. PROJ-2024-001
+    ProjectName     NVARCHAR(200)  NOT NULL,
+    
+    /* Organisational ownership */
+    DepartmentID    INT            NOT NULL,                 -- FK → Departments
+    TeamID          INT            NULL,                     -- FK → Teams  (optional)
+    ManagerID       INT            NOT NULL,                 -- FK → Employees (responsible mgr)
+    
+    /* Dates & status */
+    StartDate       DATE           NOT NULL,
+    EndDate         DATE           NULL,
+    StatusCode      NVARCHAR(20)   NOT NULL DEFAULT ('Active'),  -- Planned, Active, On-Hold, Closed …
+    
+    /* House-keeping */
+    IsActive        BIT            NOT NULL CONSTRAINT DF_Projects_IsActive DEFAULT (1),
+    CreatedAt       DATETIME2(3)   NOT NULL CONSTRAINT DF_Projects_Created  DEFAULT SYSUTCDATETIME(),
+    UpdatedAt       DATETIME2(3)   NOT NULL CONSTRAINT DF_Projects_Updated  DEFAULT SYSUTCDATETIME(),
+    
+    /* ── Foreign keys ─────────────────────────────────────── */
+    CONSTRAINT FK_Projects_Department FOREIGN KEY (DepartmentID)
+        REFERENCES dbo.Departments(DepartmentID),
+    
+    CONSTRAINT FK_Projects_Team FOREIGN KEY (TeamID)
+        REFERENCES dbo.Teams(TeamID),
+    
+    CONSTRAINT FK_Projects_Manager FOREIGN KEY (ManagerID)
+        REFERENCES dbo.Employees(EmployeeID),
+    
+    /* ── Business rules in pure SQL ───────────────────────── */
+    CONSTRAINT CHK_Projects_Dates CHECK (EndDate IS NULL OR EndDate >= StartDate)
+);
+GO
+
+ALTER TABLE dbo.Projects
+    ADD CONSTRAINT FK_Projects_Status
+        FOREIGN KEY (StatusCode) REFERENCES dbo.ProjectStatuses(ProjectStatusCode);
+
+
+-- simple NOT NULL/NULL pattern is often “good enough”, but if you want enforcement:
+CREATE OR ALTER TRIGGER tr_Projects_TeamDept
+ON dbo.Projects
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF EXISTS (
+        SELECT 1
+        FROM inserted i
+        JOIN dbo.Teams t
+          ON t.TeamID = i.TeamID
+        WHERE i.TeamID IS NOT NULL
+          AND t.DepartmentID <> i.DepartmentID
+    )
+    BEGIN
+        RAISERROR('TeamID must belong to the same DepartmentID as the project.', 16, 1);
+        ROLLBACK TRANSACTION;
+        RETURN;
+    END
+END;
+GO
+
+
+/* ============================================================
+   13-A.  Project staffing / allocations
+   ============================================================ */
+CREATE TABLE dbo.ProjectAssignments (
+    AssignmentID        INT            IDENTITY(1,1) PRIMARY KEY,
+    ProjectID           INT            NOT NULL,
+    EmployeeID          INT            NOT NULL,
+    
+    RoleInProject       NVARCHAR(100)  NULL,        -- Developer, QA, PM, etc.
+    AllocationPct       DECIMAL(5,2)   NOT NULL     -- 0-100 (% of capacity)
+        CONSTRAINT CHK_PAsg_Pct  CHECK (AllocationPct BETWEEN 0 AND 100),
+    StartDate           DATE           NOT NULL,
+    EndDate             DATE           NULL,
+    
+    CreatedAt           DATETIME2(3)   NOT NULL CONSTRAINT DF_PAsg_Created DEFAULT SYSUTCDATETIME(),
+    UpdatedAt           DATETIME2(3)   NOT NULL CONSTRAINT DF_PAsg_Updated DEFAULT SYSUTCDATETIME(),
+    
+    CONSTRAINT FK_PAsg_Project  FOREIGN KEY (ProjectID) REFERENCES dbo.Projects(ProjectID),
+    CONSTRAINT FK_PAsg_Emp      FOREIGN KEY (EmployeeID) REFERENCES dbo.Employees(EmployeeID),
+    
+    /* one ACTIVE row per (employee, project) at any given time */
+    CONSTRAINT UX_PAsg_EmpProj UNIQUE (ProjectID, EmployeeID, StartDate)
+);
+GO
+
+ALTER TABLE dbo.TimesheetDetails
+    ADD ProjectID INT NULL;
+
+ALTER TABLE dbo.TimesheetDetails
+    ADD CONSTRAINT FK_TSD_Project
+        FOREIGN KEY (ProjectID) REFERENCES dbo.Projects(ProjectID);
+
+-- If you want to keep ProjectCode for legacy imports, keep the column but mark one of the two as authoritative.

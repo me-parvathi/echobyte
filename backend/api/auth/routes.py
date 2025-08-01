@@ -139,6 +139,35 @@ def get_employee_roles(
     """Get employee role assignments with optional filtering (authenticated users only)"""
     return service.EmployeeRoleService.get_employee_roles(db, employee_id, role_id, is_active)
 
+@router.get("/employee-roles/current", response_model=List[schemas.EmployeeRoleWithDetailsResponse])
+def get_current_user_roles(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user)
+):
+    """Get current user's role assignments with details"""
+    print(f"🔍 DEBUG: get_current_user_roles called by user: {current_user.Username}")
+    
+    # Get employee record for the current user
+    from api.employee.models import Employee
+    employee = db.query(Employee).filter(
+        Employee.UserID == current_user.UserID,
+        Employee.IsActive == True
+    ).first()
+    
+    if not employee:
+        print(f"❌ DEBUG: No employee record found for user {current_user.Username}")
+        raise HTTPException(status_code=404, detail="Employee not found for current user")
+    
+    print(f"✅ DEBUG: Found employee: {employee.EmployeeCode} ({employee.FirstName} {employee.LastName})")
+    
+    # Get roles for the employee
+    roles = service.EmployeeRoleService.get_employee_roles_with_details(db, employee.EmployeeID)
+    print(f"📋 DEBUG: Found {len(roles)} roles for employee {employee.EmployeeCode}:")
+    for role in roles:
+        print(f"   - {role.RoleName} (ID: {role.RoleID})")
+    
+    return roles
+
 @router.get("/employee-roles-with-details", response_model=List[schemas.EmployeeRoleWithDetailsResponse])
 def get_employee_roles_with_details(
     employee_id: Optional[int] = None,
