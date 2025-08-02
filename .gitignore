@@ -7,7 +7,7 @@ csv_out/
 csv_out_backup/
 environments.py
 logs/
-
+frontend/.next/*
 load_csvs_to_sqlserver.py
 LICENSE
 README.md
