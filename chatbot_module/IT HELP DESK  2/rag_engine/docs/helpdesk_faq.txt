@@ -1,0 +1,10 @@
+Password Reset:
+Employees can reset their passwords at https://reset.company.com. If you face issues, contact IT at it@company.com.
+
+VPN Access:
+Install GlobalProtect VPN. Use your employee ID to log in. For issues, raise a ticket on ServiceNow.
+
+Ticket SLA:
+Low priority - 72 hours
+Medium priority - 24 hours
+High priority - 6 hours

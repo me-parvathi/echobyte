@@ -1,0 +1,219 @@
+/* General reset and font */
+body, html {
+  margin: 0;
+  padding: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  height: 100%;
+}
+
+/* Login Page Layout */
+.login-page {
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(135deg, #72c6ef, #004e92);
+}
+
+.login-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 90%;
+  max-width: 1000px;
+  padding: 40px;
+}
+
+.bot-side {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.bot-image {
+  width: 100%;
+  max-width: 550px;
+  transform: scale(1.1);
+}
+
+/* Login Form Section */
+.form-side {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: white;
+}
+
+.brand-title {
+  font-size: 2rem;
+  font-weight: bold;
+  margin-bottom: 20px;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  width: 70%;
+}
+
+.login-form input {
+  margin-bottom: 12px;
+  padding: 10px;
+  font-size: 1rem;
+  border: none;
+  border-radius: 5px;
+}
+
+.login-form button {
+  padding: 10px;
+  font-size: 1rem;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.login-form button:hover {
+  background-color: #0056b3;
+}
+
+.error-text {
+  color: red;
+  margin-top: 10px;
+  font-weight: bold;
+}
+
+/* Chat Page Styles */
+.chat-container {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(135deg, #072d5e, #4d8ac9);
+  align-items: center;
+  justify-content: center;
+}
+
+.chat-header {
+  background-color: #004e92;
+  color: white;
+  width: 100%;
+  padding: 10px;
+  text-align: right;
+}
+
+.logout-button {
+  background-color: #007bff;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-right: 10px;
+}
+
+.logout-button:hover {
+  background-color: #0056b3;
+}
+
+.messages {
+  flex-grow: 1;
+  width: 100%;
+  max-width: 600px;
+  padding: 10px;
+  overflow-y: auto;
+}
+
+.message {
+  margin: 8px 0;
+  padding: 10px;
+  border-radius: 12px;
+  max-width: 80%;
+  word-wrap: break-word;
+}
+
+.message.user {
+  background-color: #cce5ff;
+  align-self: flex-end;
+  text-align: right;
+}
+
+.message.assistant {
+  background-color: #e6f2ff;
+  align-self: flex-start;
+  text-align: left;
+}
+
+.quick-replies {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px;
+  background-color: #e6f2ff;
+}
+
+.quick-replies button {
+  padding: 8px 12px;
+  background-color: #007bff;
+  border: none;
+  border-radius: 6px;
+  color: white;
+  cursor: pointer;
+}
+
+.quick-replies button:hover {
+  background-color: #0056b3;
+}
+
+.info-text {
+  padding: 8px 12px;
+  color: #333;
+  font-weight: bold;
+}
+
+/* Input Field */
+.input-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  max-width: 600px;
+  padding: 10px;
+  background-color: white;
+}
+
+.input-container input {
+  flex-grow: 1;
+  padding: 10px;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  margin-right: 8px;
+}
+
+.input-container button {
+  padding: 10px 20px;
+  background-color: #007bff;
+  border: none;
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.input-container button:hover {
+  background-color: #0056b3;
+}
+
+/* Scrollbar */
+.messages::-webkit-scrollbar {
+  width: 8px;
+}
+
+.messages::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}

@@ -1,0 +1,10 @@
+# requirements.txt
+openai
+python-dotenv
+flask
+flask-cors
+pyjwt
+werkzeug
+sentence-transformers
+chromadb
+tiktoken
