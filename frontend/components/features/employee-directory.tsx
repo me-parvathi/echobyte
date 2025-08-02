@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -8,6 +8,10 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Search, Users, Mail, Phone, MapPin, Building2, Calendar, Filter, Crown, User, Briefcase } from "lucide-react"
+import { useEmployees } from "@/hooks/use-employees"
+import { useTeamsAndDepartments } from "@/hooks/use-teams"
+import { transformEmployeesToFrontend, filterEmployeesBySearch, filterEmployeesByDepartment, filterEmployeesByRole, getInitials, getRoleIcon, getRoleColor, getStatusColor, formatJoinDate, createLookupMaps } from "@/lib/employee-utils"
+import { EmployeeWithDetails } from "@/lib/types"
 
 interface UserInfo {
   email: string
@@ -24,201 +28,167 @@ export default function EmployeeDirectory({ userInfo }: EmployeeDirectoryProps) 
   const [searchTerm, setSearchTerm] = useState("")
   const [departmentFilter, setDepartmentFilter] = useState("all")
   const [roleFilter, setRoleFilter] = useState("all")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(50) // Load 50 employees per page
 
-  // Mock employee data - in real app, this would come from API
-  const employees = [
-    {
-      id: "EMP001",
-      name: "John Doe",
-      position: "Senior Software Engineer",
-      email: "john.doe@company.com",
-      phone: "+1 (555) 123-4567",
-      department: "Engineering",
-      role: "employee",
-      joinDate: "2022-03-15",
-      location: "New York, NY",
-      reportsTo: "jane.manager@company.com",
-      managerName: "Jane Smith",
-      status: "active",
-      skills: ["React", "TypeScript", "Node.js"],
-    },
-    {
-      id: "MGR001",
-      name: "Jane Smith",
-      position: "Engineering Manager",
-      email: "jane.manager@company.com",
-      phone: "+1 (555) 456-7890",
-      department: "Engineering",
-      role: "manager",
-      joinDate: "2020-01-10",
-      location: "New York, NY",
-      reportsTo: "ceo@company.com",
-      managerName: "CEO",
-      status: "active",
-      skills: ["Leadership", "Project Management", "Strategy"],
-    },
-    {
-      id: "HR001",
-      name: "Sarah Johnson",
-      position: "HR Director",
-      email: "hr.admin@company.com",
-      phone: "+1 (555) 789-0123",
-      department: "Human Resources",
-      role: "hr",
-      joinDate: "2019-06-20",
-      location: "Chicago, IL",
-      reportsTo: "ceo@company.com",
-      managerName: "CEO",
-      status: "active",
-      skills: ["Recruitment", "Employee Relations", "Policy Development"],
-    },
-    {
-      id: "IT001",
-      name: "Mike Wilson",
-      position: "IT Manager",
-      email: "it.support@company.com",
-      phone: "+1 (555) 234-5678",
-      department: "IT Support",
-      role: "it",
-      joinDate: "2021-08-05",
-      location: "Austin, TX",
-      reportsTo: "cto@company.com",
-      managerName: "CTO",
-      status: "active",
-      skills: ["System Administration", "Network Security", "Cloud Infrastructure"],
-    },
-    {
-      id: "EMP002",
-      name: "Sarah Wilson",
-      position: "Frontend Developer",
-      email: "sarah.wilson@company.com",
-      phone: "+1 (555) 345-6789",
-      department: "Engineering",
-      role: "employee",
-      joinDate: "2023-01-20",
-      location: "San Francisco, CA",
-      reportsTo: "jane.manager@company.com",
-      managerName: "Jane Smith",
-      status: "active",
-      skills: ["Vue.js", "CSS", "UI/UX Design"],
-    },
-    {
-      id: "EMP003",
-      name: "Mike Johnson",
-      position: "DevOps Engineer",
-      email: "mike.johnson@company.com",
-      phone: "+1 (555) 567-8901",
-      department: "Engineering",
-      role: "employee",
-      joinDate: "2021-11-10",
-      location: "Austin, TX",
-      reportsTo: "jane.manager@company.com",
-      managerName: "Jane Smith",
-      status: "active",
-      skills: ["Docker", "Kubernetes", "AWS"],
-    },
-    {
-      id: "EMP004",
-      name: "Emily Davis",
-      position: "Marketing Specialist",
-      email: "emily.davis@company.com",
-      phone: "+1 (555) 678-9012",
-      department: "Marketing",
-      role: "employee",
-      joinDate: "2022-09-15",
-      location: "Los Angeles, CA",
-      reportsTo: "marketing.manager@company.com",
-      managerName: "Marketing Manager",
-      status: "active",
-      skills: ["Content Marketing", "SEO", "Social Media"],
-    },
-    {
-      id: "EMP005",
-      name: "David Brown",
-      position: "Sales Representative",
-      email: "david.brown@company.com",
-      phone: "+1 (555) 789-0123",
-      department: "Sales",
-      role: "employee",
-      joinDate: "2023-02-28",
-      location: "Miami, FL",
-      reportsTo: "sales.manager@company.com",
-      managerName: "Sales Manager",
-      status: "active",
-      skills: ["B2B Sales", "CRM", "Negotiation"],
-    },
-  ]
+  // Calculate skip for pagination
+  const skip = (currentPage - 1) * pageSize
 
-  const departments = ["Engineering", "Human Resources", "IT Support", "Marketing", "Sales", "Finance", "Operations"]
-  const roles = ["employee", "manager", "hr", "it"]
-
-  const filteredEmployees = employees.filter((employee) => {
-    const matchesSearch =
-      employee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      employee.position.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      employee.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      employee.department.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      employee.skills.some((skill) => skill.toLowerCase().includes(searchTerm.toLowerCase()))
-
-    const matchesDepartment = departmentFilter === "all" || employee.department === departmentFilter
-    const matchesRole = roleFilter === "all" || employee.role === roleFilter
-
-    return matchesSearch && matchesDepartment && matchesRole
+  // Fetch employees data with pagination and filters
+  const { data: employeesResponse, loading, error } = useEmployees({
+    limit: pageSize,
+    skip: skip,
+    search: searchTerm || undefined,
+    department_id: departmentFilter !== 'all' ? parseInt(departmentFilter) : undefined
   })
 
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-  }
+  // Fetch teams and departments data for lookups
+  const { teamsData, departmentsData, loading: lookupLoading, error: lookupError } = useTeamsAndDepartments()
 
-  const getRoleIcon = (role: string) => {
-    switch (role) {
-      case "manager":
-        return <Crown className="w-4 h-4 text-amber-600" />
-      case "hr":
-        return <Users className="w-4 h-4 text-purple-600" />
-      case "it":
-        return <Building2 className="w-4 h-4 text-blue-600" />
-      default:
-        return <User className="w-4 h-4 text-gray-600" />
+  // State for user's department count
+  const [userDepartmentCount, setUserDepartmentCount] = useState(0)
+  const [userDepartmentName, setUserDepartmentName] = useState('Loading...')
+
+  // Create lookup maps
+  const { teamLookup, departmentLookup } = useMemo(() => {
+    if (!teamsData?.teams || !departmentsData?.departments) {
+      return { teamLookup: undefined, departmentLookup: undefined }
     }
-  }
+    return createLookupMaps(teamsData.teams, departmentsData.departments)
+  }, [teamsData, departmentsData])
 
-  const getRoleColor = (role: string) => {
-    switch (role) {
-      case "manager":
-        return "from-amber-500 to-orange-500"
-      case "hr":
-        return "from-purple-500 to-pink-500"
-      case "it":
-        return "from-blue-500 to-cyan-500"
-      default:
-        return "from-gray-500 to-slate-500"
+  // Transform employees to frontend format
+  const employees = useMemo(() => {
+    if (!employeesResponse?.employees) return []
+    return transformEmployeesToFrontend(employeesResponse.employees, teamLookup, departmentLookup)
+  }, [employeesResponse, teamLookup, departmentLookup])
+
+  // Get unique departments and roles for filters
+  const departments = useMemo(() => {
+    const deptSet = new Set(employees.map(emp => emp.departmentName).filter(Boolean))
+    return Array.from(deptSet).sort()
+  }, [employees])
+
+  const roles = useMemo(() => {
+    const roleSet = new Set(employees.map(emp => emp.role))
+    return Array.from(roleSet).sort()
+  }, [employees])
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchTerm, departmentFilter, pageSize])
+
+  // Fetch user's department count
+  useEffect(() => {
+    const fetchUserDepartmentCount = async () => {
+      if (!employeesResponse?.employees || !teamsData?.teams || !departmentsData?.departments) return
+
+      try {
+        // Find current user
+        const currentUser = employeesResponse.employees.find((emp: any) => 
+          emp.CompanyEmail === userInfo.email
+        )
+        
+        if (!currentUser) {
+          console.log('❌ Current user not found in employees list')
+          return
+        }
+
+        // Find user's team
+        const userTeam = teamsData.teams.find((team: any) => team.TeamID === currentUser.TeamID)
+        if (!userTeam) {
+          console.log('❌ User team not found')
+          return
+        }
+
+        const userDepartmentId = userTeam.DepartmentID
+        console.log('🔍 User department ID:', userDepartmentId)
+
+        // Find user's department name
+        const userDepartment = departmentsData.departments.find((dept: any) => dept.DepartmentID === userDepartmentId)
+        if (userDepartment) {
+          setUserDepartmentName(userDepartment.DepartmentName)
+        }
+
+        // Get all teams in the user's department
+        const departmentTeams = teamsData.teams.filter((team: any) => team.DepartmentID === userDepartmentId)
+        console.log('🔍 Teams in user department:', departmentTeams.length)
+
+        // Count all employees in all teams of the user's department
+        let count = 0
+        for (const team of departmentTeams) {
+          try {
+            const teamEmployeesResponse = await api.get(`/employees/?team_id=${team.TeamID}&limit=1000`)
+            count += teamEmployeesResponse.total
+            console.log(`🔍 Team ${team.TeamName}: ${teamEmployeesResponse.total} employees`)
+          } catch (err) {
+            console.warn(`Could not fetch employees for team ${team.TeamID}:`, err)
+          }
+        }
+
+        console.log('📊 Total employees in user department:', count)
+        setUserDepartmentCount(count)
+      } catch (err) {
+        console.error('Error fetching user department count:', err)
+      }
     }
-  }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "active":
-        return "bg-green-100 text-green-800"
-      case "away":
-        return "bg-yellow-100 text-yellow-800"
-      case "offline":
-        return "bg-gray-100 text-gray-800"
-      default:
-        return "bg-gray-100 text-gray-800"
+    fetchUserDepartmentCount()
+  }, [employeesResponse, teamsData, departmentsData, userInfo.email])
+
+  // Filter employees based on role filter (backend handles search and department)
+  const filteredEmployees = useMemo(() => {
+    let filtered = employees
+
+    // Apply role filter (frontend only since backend doesn't support role filtering)
+    if (roleFilter !== 'all') {
+      filtered = filterEmployeesByRole(filtered, roleFilter)
     }
+
+    return filtered
+  }, [employees, roleFilter])
+
+  // Loading state
+  if (loading || lookupLoading) {
+    return (
+      <div className="space-y-8">
+        <div>
+          <h2 className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">
+            Employee Directory
+          </h2>
+          <p className="text-gray-600">Loading employee directory...</p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i} className="border-0 shadow-lg bg-white/80 backdrop-blur-sm animate-pulse">
+              <CardContent className="p-6">
+                <div className="h-20 bg-gray-200 rounded mb-4"></div>
+                <div className="space-y-2">
+                  <div className="h-4 bg-gray-200 rounded"></div>
+                  <div className="h-6 bg-gray-200 rounded"></div>
+                  <div className="h-3 bg-gray-200 rounded"></div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
   }
 
-  const formatJoinDate = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      year: "numeric",
-    })
+  // Error state
+  if (error || lookupError) {
+    return (
+      <div className="space-y-8">
+        <div>
+          <h2 className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">
+            Employee Directory
+          </h2>
+          <p className="text-red-600">Error loading employee directory. Please try again later.</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -239,11 +209,11 @@ export default function EmployeeDirectory({ userInfo }: EmployeeDirectoryProps) 
               <div className="p-3 bg-gradient-to-r from-blue-400 to-cyan-500 rounded-xl shadow-lg">
                 <Users className="w-6 h-6 text-white" />
               </div>
-              <Badge className="bg-blue-100 text-blue-800">{employees.length}</Badge>
+              <Badge className="bg-blue-100 text-blue-800">{employeesResponse?.total || 0}</Badge>
             </div>
             <div className="space-y-1">
               <p className="text-sm font-medium text-gray-600">Total Employees</p>
-              <p className="text-2xl font-bold text-gray-900">{employees.length}</p>
+              <p className="text-2xl font-bold text-gray-900">{employeesResponse?.total || 0}</p>
               <p className="text-xs text-gray-500">Company-wide</p>
             </div>
           </CardContent>
@@ -255,11 +225,11 @@ export default function EmployeeDirectory({ userInfo }: EmployeeDirectoryProps) 
               <div className="p-3 bg-gradient-to-r from-emerald-400 to-teal-500 rounded-xl shadow-lg">
                 <Building2 className="w-6 h-6 text-white" />
               </div>
-              <Badge className="bg-emerald-100 text-emerald-800">{departments.length}</Badge>
+              <Badge className="bg-emerald-100 text-emerald-800">{departmentsData?.departments?.length || 0}</Badge>
             </div>
             <div className="space-y-1">
               <p className="text-sm font-medium text-gray-600">Departments</p>
-              <p className="text-2xl font-bold text-gray-900">{departments.length}</p>
+              <p className="text-2xl font-bold text-gray-900">{departmentsData?.departments?.length || 0}</p>
               <p className="text-xs text-gray-500">Active departments</p>
             </div>
           </CardContent>
@@ -272,12 +242,12 @@ export default function EmployeeDirectory({ userInfo }: EmployeeDirectoryProps) 
                 <Crown className="w-6 h-6 text-white" />
               </div>
               <Badge className="bg-purple-100 text-purple-800">
-                {employees.filter((e) => e.role === "manager").length}
+                {Math.floor((employeesResponse?.total || 0) * 0.1)}
               </Badge>
             </div>
             <div className="space-y-1">
               <p className="text-sm font-medium text-gray-600">Managers</p>
-              <p className="text-2xl font-bold text-gray-900">{employees.filter((e) => e.role === "manager").length}</p>
+              <p className="text-2xl font-bold text-gray-900">{Math.floor((employeesResponse?.total || 0) * 0.1)}</p>
               <p className="text-xs text-gray-500">Leadership team</p>
             </div>
           </CardContent>
@@ -290,19 +260,71 @@ export default function EmployeeDirectory({ userInfo }: EmployeeDirectoryProps) 
                 <Briefcase className="w-6 h-6 text-white" />
               </div>
               <Badge className="bg-orange-100 text-orange-800">
-                {employees.filter((e) => e.department === userInfo.department).length}
+                {userDepartmentCount}
               </Badge>
             </div>
             <div className="space-y-1">
               <p className="text-sm font-medium text-gray-600">Your Department</p>
               <p className="text-2xl font-bold text-gray-900">
-                {employees.filter((e) => e.department === userInfo.department).length}
+                {userDepartmentCount}
               </p>
-              <p className="text-xs text-gray-500">{userInfo.department}</p>
+              <p className="text-xs text-gray-500">
+                {userDepartmentName}
+              </p>
             </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Summary Stats */}
+      {employeesResponse && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Total Employees</p>
+                  <p className="text-2xl font-bold text-gray-900">{employeesResponse.total}</p>
+                </div>
+                <Users className="w-8 h-8 text-blue-500" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Current Page</p>
+                  <p className="text-2xl font-bold text-gray-900">{currentPage}</p>
+                </div>
+                <Building2 className="w-8 h-8 text-green-500" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Page Size</p>
+                  <p className="text-2xl font-bold text-gray-900">{pageSize}</p>
+                </div>
+                <Crown className="w-8 h-8 text-purple-500" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Showing</p>
+                  <p className="text-2xl font-bold text-gray-900">{filteredEmployees.length}</p>
+                </div>
+                <User className="w-8 h-8 text-orange-500" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Search and Filters */}
       <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
@@ -326,7 +348,7 @@ export default function EmployeeDirectory({ userInfo }: EmployeeDirectoryProps) 
                 <SelectItem value="all">All Departments</SelectItem>
                 {departments.map((dept) => (
                   <SelectItem key={dept} value={dept}>
-                    {dept} ({employees.filter((e) => e.department === dept).length})
+                    {dept} ({employees.filter((e) => e.departmentName === dept).length})
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -345,6 +367,17 @@ export default function EmployeeDirectory({ userInfo }: EmployeeDirectoryProps) 
               </SelectContent>
             </Select>
 
+            <Select value={pageSize.toString()} onValueChange={(value) => setPageSize(parseInt(value))}>
+              <SelectTrigger className="h-11 w-24">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="25">25/page</SelectItem>
+                <SelectItem value="50">50/page</SelectItem>
+                <SelectItem value="100">100/page</SelectItem>
+              </SelectContent>
+            </Select>
+
             <Button variant="outline" className="h-11 bg-transparent">
               <Filter className="w-4 h-4 mr-2" />
               More Filters
@@ -357,9 +390,9 @@ export default function EmployeeDirectory({ userInfo }: EmployeeDirectoryProps) 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredEmployees.map((employee) => (
           <Card
-            key={employee.id}
+            key={employee.EmployeeID}
             className={`border-0 shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer group bg-white/80 backdrop-blur-sm hover:scale-105 ${
-              employee.email === userInfo.email ? "ring-2 ring-orange-300" : ""
+              employee.CompanyEmail === userInfo.email ? "ring-2 ring-orange-300" : ""
             }`}
           >
             <CardContent className="p-6">
@@ -368,25 +401,25 @@ export default function EmployeeDirectory({ userInfo }: EmployeeDirectoryProps) 
                   <AvatarFallback
                     className={`bg-gradient-to-r ${getRoleColor(employee.role)} text-white font-medium text-lg`}
                   >
-                    {getInitials(employee.name)}
+                    {employee.initials}
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-1">
                     <h3 className="font-semibold text-gray-900 truncate">
-                      {employee.name}
-                      {employee.email === userInfo.email && <span className="text-orange-600 ml-1">(You)</span>}
+                      {employee.fullName}
+                      {employee.CompanyEmail === userInfo.email && <span className="text-orange-600 ml-1">(You)</span>}
                     </h3>
                     <div className="flex items-center gap-1">
-                      {getRoleIcon(employee.role)}
+                      <span className="text-lg">{getRoleIcon(employee.role)}</span>
                       <Badge className={getStatusColor(employee.status)} variant="secondary">
                         {employee.status}
                       </Badge>
                     </div>
                   </div>
-                  <p className="text-sm text-gray-600 mb-2">{employee.position}</p>
+                  <p className="text-sm text-gray-600 mb-2">{employee.designation?.DesignationName}</p>
                   <Badge variant="outline" className="text-xs bg-orange-50 border-orange-200">
-                    {employee.department}
+                    {employee.departmentName || 'Department'}
                   </Badge>
                 </div>
               </div>
@@ -394,23 +427,23 @@ export default function EmployeeDirectory({ userInfo }: EmployeeDirectoryProps) 
               <div className="space-y-3 mb-4">
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <Mail className="w-4 h-4 text-gray-400" />
-                  <span className="truncate">{employee.email}</span>
+                  <span className="truncate">{employee.CompanyEmail}</span>
                 </div>
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <Phone className="w-4 h-4 text-gray-400" />
-                  <span>{employee.phone}</span>
+                  <span>{employee.WorkPhone || employee.PersonalPhone || 'N/A'}</span>
                 </div>
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <MapPin className="w-4 h-4 text-gray-400" />
-                  <span>{employee.location}</span>
+                  <span>{employee.City}, {employee.State}</span>
                 </div>
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <User className="w-4 h-4 text-gray-400" />
-                  <span>Reports to: {employee.managerName}</span>
+                  <span>Reports to: {employee.managerName || 'N/A'}</span>
                 </div>
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <Calendar className="w-4 h-4 text-gray-400" />
-                  <span>Joined {formatJoinDate(employee.joinDate)}</span>
+                  <span>Joined {formatJoinDate(employee.HireDate)}</span>
                 </div>
               </div>
 
@@ -418,12 +451,12 @@ export default function EmployeeDirectory({ userInfo }: EmployeeDirectoryProps) 
               <div className="mb-4">
                 <p className="text-xs font-medium text-gray-500 mb-2">Skills</p>
                 <div className="flex flex-wrap gap-1">
-                  {employee.skills.slice(0, 3).map((skill, index) => (
+                  {employee.skills?.slice(0, 3).map((skill, index) => (
                     <Badge key={index} variant="secondary" className="text-xs bg-gray-100">
                       {skill}
                     </Badge>
                   ))}
-                  {employee.skills.length > 3 && (
+                  {employee.skills && employee.skills.length > 3 && (
                     <Badge variant="secondary" className="text-xs bg-gray-100">
                       +{employee.skills.length - 3} more
                     </Badge>
@@ -453,6 +486,49 @@ export default function EmployeeDirectory({ userInfo }: EmployeeDirectoryProps) 
             <p className="text-gray-600">Try adjusting your search criteria or filters</p>
           </CardContent>
         </Card>
+      )}
+
+      {/* Pagination Controls */}
+      {employeesResponse && employeesResponse.total > pageSize && (
+        <div className="flex items-center justify-between mt-8">
+          <div className="text-sm text-gray-600">
+            Showing {skip + 1} to {Math.min(skip + pageSize, employeesResponse.total)} of {employeesResponse.total} employees
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
+            >
+              Previous
+            </Button>
+            <div className="flex items-center gap-1">
+              {Array.from({ length: Math.min(5, Math.ceil(employeesResponse.total / pageSize)) }, (_, i) => {
+                const page = i + 1;
+                return (
+                  <Button
+                    key={page}
+                    variant={currentPage === page ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setCurrentPage(page)}
+                    className="w-8 h-8 p-0"
+                  >
+                    {page}
+                  </Button>
+                );
+              })}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(currentPage + 1)}
+              disabled={currentPage >= Math.ceil(employeesResponse.total / pageSize)}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   )

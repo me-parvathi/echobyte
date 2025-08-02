@@ -221,4 +221,16 @@ class ManagerBatchResponse(BaseModel):
     last_updated: str
     
     class Config:
+        from_attributes = True
+
+# Feedback target schema
+class EmployeeFeedbackTargetResponse(BaseModel):
+    EmployeeID: int
+    EmployeeName: str
+    DesignationName: str
+    DepartmentName: str
+    isManager: bool
+    isHR: bool
+    
+    class Config:
         from_attributes = True 

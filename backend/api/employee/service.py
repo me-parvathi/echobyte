@@ -1,4 +1,4 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_
 from typing import List, Optional
 from . import models, schemas
@@ -48,32 +48,39 @@ class EmployeeService:
     
     @staticmethod
     def get_employees_with_count(
-        db: Session, 
-        skip: int = 0, 
+        db: Session,
+        skip: int = 0,
         limit: int = 100,
         is_active: Optional[bool] = None,
         team_id: Optional[int] = None,
         department_id: Optional[int] = None,
         search: Optional[str] = None
     ) -> tuple[List[models.Employee], int]:
-        """Get employees with total count for pagination"""
+        """Get employees with total count for pagination.
+        Optimisation notes:
+        1. We first fetch the paginated slice.  When the slice size is < limit and we are on the first
+           page (skip == 0) we know we already have every row, so we can derive the total count without
+           issuing a second COUNT(*) query.
+        2. This saves one full-table scan for the common case where the UI asks for a very large limit
+           just to get "all" employees (e.g. limit=1000).
+        """
         # Build the base query
-        query = db.query(models.Employee)
-        
+        base_query = db.query(models.Employee)
+
         if is_active is not None:
-            query = query.filter(models.Employee.IsActive == is_active)
-        
+            base_query = base_query.filter(models.Employee.IsActive == is_active)
+
         if team_id:
-            query = query.filter(models.Employee.TeamID == team_id)
-        
+            base_query = base_query.filter(models.Employee.TeamID == team_id)
+
         if department_id:
-            query = query.join(Team, models.Employee.TeamID == Team.TeamID).filter(Team.DepartmentID == department_id)
-        
+            base_query = base_query.join(Team, models.Employee.TeamID == Team.TeamID).filter(Team.DepartmentID == department_id)
+
         # Add search filter
         if search:
             print(f"DEBUG: Searching for '{search}'")
             search_term = f"%{search}%"
-            query = query.filter(
+            base_query = base_query.filter(
                 or_(
                     models.Employee.FirstName.ilike(search_term),
                     models.Employee.LastName.ilike(search_term),
@@ -81,16 +88,21 @@ class EmployeeService:
                     models.Employee.CompanyEmail.ilike(search_term)
                 )
             )
-            print(f"DEBUG: Search query applied")
-        
-        # Get total count before pagination
-        total_count = query.count()
-        print(f"DEBUG: Total count after search: {total_count}")
-        
-        # Get paginated results
-        employees = query.order_by(models.Employee.EmployeeID).offset(skip).limit(limit).all()
-        print(f"DEBUG: Returning {len(employees)} employees")
-        
+            print("DEBUG: Search query applied")
+
+        # Apply ordering and pagination to a clone of the query
+        pagination_query = base_query.order_by(models.Employee.EmployeeID).offset(skip).limit(limit)
+        employees = pagination_query.all()
+
+        # Derive/compute total count efficiently
+        if skip == 0 and len(employees) < limit:
+            # We already have all the rows – no need for an extra COUNT(*)
+            total_count = len(employees)
+        else:
+            total_count = base_query.count()
+
+        print(f"DEBUG: Returning {len(employees)} employees (total {total_count})")
+
         return employees, total_count
     
     @staticmethod
@@ -215,48 +227,75 @@ class EmployeeService:
 
     @staticmethod
     def get_manager_batch_data(db: Session, manager_id: int) -> schemas.ManagerBatchResponse:
-        """Get manager data and subordinates in a single optimized request"""
-        from datetime import datetime
-        from api.team.models import Team
-        from api.department.models import Department
+        """Get batch data for manager dashboard"""
+        # Get manager's team members
+        team_members = EmployeeService.get_subordinates(db, manager_id)
         
-        # Get manager details
-        manager = EmployeeService.get_employee(db, manager_id)
-        if not manager:
-            raise HTTPException(status_code=404, detail="Manager not found")
-        
-        # Get all subordinates
-        subordinates = EmployeeService.get_subordinates(db, manager_id)
-        
-        # Get team and department information in the same session
-        team = db.query(Team).filter(Team.TeamID == manager.TeamID).first()
-        department = None
-        if team:
-            department = db.query(Department).filter(Department.DepartmentID == team.DepartmentID).first()
-        
-        team_info = {
-            "team": {
-                "TeamID": team.TeamID if team else None,
-                "TeamName": team.TeamName if team else None,
-                "TeamCode": team.TeamCode if team else None
-            },
-            "department": {
-                "DepartmentID": department.DepartmentID if department else None,
-                "DepartmentName": department.DepartmentName if department else None,
-                "DepartmentCode": department.DepartmentCode if department else None
-            }
-        }
-        
-        active_subordinates = [s for s in subordinates if s.IsActive]
+        # Get team overview
+        team_overview = EmployeeService.get_manager_team_overview(db, manager_id)
         
         return schemas.ManagerBatchResponse(
-            manager=manager,
-            subordinates=subordinates,
-            total_subordinates=len(subordinates),
-            active_subordinates=len(active_subordinates),
-            team_info=team_info,
-            last_updated=datetime.utcnow().isoformat()
+            team_members=team_members,
+            team_overview=team_overview
         )
+
+    @staticmethod
+    def get_current_user_manager(db: Session, user_id: str) -> Optional[dict]:
+        """Get current user's manager information"""
+        from api.auth.models import EmployeeRole, Role
+        from api.department.models import Department
+        from api.team.models import Team
+        
+        # Get current employee
+        employee = EmployeeService.get_employee_by_user_id(db, user_id)
+        if not employee:
+            return None
+        
+        # Check if employee has a manager
+        if not employee.ManagerID:
+            return None
+        
+        # Get manager information
+        manager = db.query(
+            models.Employee.EmployeeID,
+            models.Employee.FirstName,
+            models.Employee.LastName,
+            models.Designation.DesignationName,
+            Department.DepartmentName
+        ).join(
+            models.Designation, models.Employee.DesignationID == models.Designation.DesignationID
+        ).join(
+            Team, models.Employee.TeamID == Team.TeamID
+        ).join(
+            Department, Team.DepartmentID == Department.DepartmentID
+        ).filter(
+            models.Employee.EmployeeID == employee.ManagerID,
+            models.Employee.IsActive == True
+        ).first()
+        
+        if not manager:
+            return None
+        
+        # Check if manager has manager role
+        roles = db.query(Role.RoleName).join(
+            EmployeeRole, Role.RoleID == EmployeeRole.RoleID
+        ).filter(
+            EmployeeRole.EmployeeID == manager.EmployeeID,
+            EmployeeRole.IsActive == True
+        ).all()
+        
+        role_names = [role.RoleName for role in roles]
+        is_manager = any('Manager' in role for role in role_names)
+        is_hr = any('HR' in role for role in role_names)
+        
+        return {
+            "EmployeeID": manager.EmployeeID,
+            "EmployeeName": f"{manager.FirstName} {manager.LastName}",
+            "DesignationName": manager.DesignationName,
+            "DepartmentName": manager.DepartmentName,
+            "isManager": is_manager,
+            "isHR": is_hr
+        }
 
 class EmergencyContactService:
     
@@ -341,4 +380,58 @@ class LookupService:
     
     @staticmethod
     def get_designations(db: Session) -> List[models.Designation]:
-        return db.query(models.Designation).filter(models.Designation.IsActive == True).all() 
+        return db.query(models.Designation).filter(models.Designation.IsActive == True).all()
+
+    @staticmethod
+    def get_feedback_targets(db: Session) -> List[dict]:
+        """Get list of employees who can receive feedback (managers and HR)"""
+        from api.auth.models import EmployeeRole, Role
+        from api.department.models import Department
+        from api.team.models import Team
+        
+        # Get employees with manager or HR roles
+        query = db.query(
+            models.Employee.EmployeeID,
+            models.Employee.FirstName,
+            models.Employee.LastName,
+            models.Designation.DesignationName,
+            Department.DepartmentName
+        ).join(
+            models.Designation, models.Employee.DesignationID == models.Designation.DesignationID
+        ).join(
+            Team, models.Employee.TeamID == Team.TeamID
+        ).join(
+            Department, Team.DepartmentID == Department.DepartmentID
+        ).filter(
+            models.Employee.IsActive == True
+        )
+        
+        employees = query.all()
+        
+        # Get role information for each employee
+        targets = []
+        for emp in employees:
+            # Check if employee has manager or HR role
+            roles = db.query(Role.RoleName).join(
+                EmployeeRole, Role.RoleID == EmployeeRole.RoleID
+            ).filter(
+                EmployeeRole.EmployeeID == emp.EmployeeID,
+                EmployeeRole.IsActive == True
+            ).all()
+            
+            role_names = [role.RoleName for role in roles]
+            is_manager = any('Manager' in role for role in role_names)
+            is_hr = any('HR' in role for role in role_names)
+            
+            # Include if they are a manager or HR
+            if is_manager or is_hr:
+                targets.append({
+                    "EmployeeID": emp.EmployeeID,
+                    "EmployeeName": f"{emp.FirstName} {emp.LastName}",
+                    "DesignationName": emp.DesignationName,
+                    "DepartmentName": emp.DepartmentName,
+                    "isManager": is_manager,
+                    "isHR": is_hr
+                })
+        
+        return targets 

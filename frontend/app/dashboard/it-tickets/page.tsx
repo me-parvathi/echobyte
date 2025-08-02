@@ -1,9 +1,10 @@
 "use client"
 
 import withRBAC from "@/lib/withRBAC"
+import { ITTicketsManager } from "@/components/features/it-tickets-manager"
 
 function ITTicketsPage() {
-  return <div className="p-6">IT Ticket management - coming soon...</div>
+  return <ITTicketsManager />
 }
 
 export default withRBAC(ITTicketsPage, ["it"]) 

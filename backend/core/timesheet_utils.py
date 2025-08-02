@@ -169,6 +169,7 @@ def check_leave_conflicts_for_timesheet_submission(
 ) -> bool:
     """
     Check if there are any leave conflicts when submitting a timesheet.
+    Enhanced to check for specific days with hours worked that conflict with leave.
     
     Args:
         db: Database session
@@ -182,13 +183,28 @@ def check_leave_conflicts_for_timesheet_submission(
     """
     from fastapi import HTTPException
     
-    # Get the timesheet
+    # Get the timesheet with details
     timesheet = db.query(models.Timesheet).filter(
         models.Timesheet.TimesheetID == timesheet_id
     ).first()
     
     if not timesheet:
         raise HTTPException(status_code=404, detail="Timesheet not found")
+    
+    # Get timesheet details to check for days with hours worked
+    timesheet_details = db.query(models.TimesheetDetail).filter(
+        models.TimesheetDetail.TimesheetID == timesheet_id,
+        models.TimesheetDetail.HoursWorked > 0
+    ).all()
+    
+    # Get the dates where hours were worked
+    work_dates = {detail.WorkDate for detail in timesheet_details}
+    
+    if not work_dates:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot submit timesheet. No hours have been logged for this week."
+        )
     
     # Check for any leave applications that overlap with the timesheet week
     # and are in submitted or approved states
@@ -204,20 +220,59 @@ def check_leave_conflicts_for_timesheet_submission(
         leave_models.LeaveApplication.EndDate >= timesheet.WeekStartDate
     ).all()
     
-    if conflicting_leaves:
-        leave_details = []
-        for leave in conflicting_leaves:
-            leave_details.append(
-                f"Leave {leave.LeaveApplicationID}: {leave.StartDate} to {leave.EndDate} "
-                f"(Status: {leave.StatusCode})"
+    # Check for specific conflicts where leave dates overlap with work dates
+    conflicting_dates = []
+    for leave in conflicting_leaves:
+        # Generate all dates in the leave period
+        leave_start = leave.StartDate
+        leave_end = leave.EndDate
+        current_date = leave_start
+        
+        while current_date <= leave_end:
+            if current_date in work_dates:
+                conflicting_dates.append({
+                    'date': current_date,
+                    'leave_id': leave.LeaveApplicationID,
+                    'leave_type': leave.leave_type.LeaveTypeName if leave.leave_type else 'Unknown',
+                    'hours_worked': next((detail.HoursWorked for detail in timesheet_details if detail.WorkDate == current_date), 0)
+                })
+            current_date += timedelta(days=1)
+    
+    if conflicting_dates:
+        conflict_details = []
+        for conflict in conflicting_dates:
+            conflict_details.append(
+                f"Date {conflict['date']}: {conflict['hours_worked']} hours worked conflicts with "
+                f"Leave {conflict['leave_id']} ({conflict['leave_type']})"
             )
         
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot submit timesheet. Employee has conflicting leave applications: {'; '.join(leave_details)}"
+            detail=f"Cannot submit timesheet. The following dates have both leave and hours worked: {'; '.join(conflict_details)}"
         )
     
     return False
+
+
+def check_leave_conflicts_for_timesheet_approval(
+    db: Session, 
+    timesheet_id: int
+) -> bool:
+    """
+    Check if there are any leave conflicts when approving a timesheet.
+    This is the same validation as submission to ensure consistency.
+    
+    Args:
+        db: Database session
+        timesheet_id: Timesheet ID
+        
+    Returns:
+        True if there are leave conflicts, False otherwise
+        
+    Raises:
+        HTTPException: If there are leave conflicts
+    """
+    return check_leave_conflicts_for_timesheet_submission(db, timesheet_id)
 
 
 def get_or_create_timesheet_for_date(

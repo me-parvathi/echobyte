@@ -19,6 +19,21 @@ def get_current_employee(
         raise HTTPException(status_code=404, detail="Employee not found for current user")
     return employee
 
+# Feedback targets route - must come before parameterized routes
+@router.get("/feedback-targets", response_model=List[schemas.EmployeeFeedbackTargetResponse])
+def get_feedback_targets(db: Session = Depends(get_db)):
+    """Get list of employees who can receive feedback (managers and HR)"""
+    return service.LookupService.get_feedback_targets(db)
+
+# Current user's manager route
+@router.get("/profile/current/manager", response_model=Optional[schemas.EmployeeFeedbackTargetResponse])
+def get_current_user_manager(
+    current_user = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get current user's manager information"""
+    return service.EmployeeService.get_current_user_manager(db, current_user.UserID)
+
 # Manager-specific routes (require manager role)
 @router.get("/manager/subordinates", response_model=List[schemas.EmployeeResponse])
 def get_manager_subordinates(

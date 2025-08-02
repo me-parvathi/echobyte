@@ -12,7 +12,7 @@ from . import schemas, service
 # Create router
 router = APIRouter()
 
-@router.get("/", response_model=List[schemas.Location])
+@router.get("", response_model=List[schemas.Location])
 def get_locations(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
@@ -179,7 +179,7 @@ def get_location(location_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Location not found")
     return location
 
-@router.post("/", response_model=schemas.Location, status_code=201)
+@router.post("", response_model=schemas.Location, status_code=201)
 def create_location(location: schemas.LocationCreate, db: Session = Depends(get_db)):
     """Create a new location"""
     location_service = service.LocationService()

@@ -7,6 +7,11 @@ from datetime import datetime, timedelta, date
 from decimal import Decimal
 import calendar
 from core.timesheet_utils import check_timesheet_conflicts_for_leave_application
+from core.pagination import paginate_query
+
+def is_sick_leave_type(leave_type_name: str) -> bool:
+    """Check if the leave type is sick leave"""
+    return 'sick' in leave_type_name.lower()
 
 def calculate_business_days(start_date: date, end_date: date, exclude_holidays: bool = True) -> Decimal:
     """
@@ -74,8 +79,17 @@ def calculate_calendar_days(start_date: date, end_date: date) -> Decimal:
 
 class LeaveService:
     @staticmethod
-    def get_leave_applications(db: Session, skip: int = 0, limit: int = 100, employee_id: Optional[int] = None, status_code: Optional[str] = None):
-        """Get leave applications with optional filtering"""
+    def get_leave_applications(
+        db: Session, 
+        skip: int = 0, 
+        limit: int = 100, 
+        employee_id: Optional[int] = None, 
+        status_code: Optional[str] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        leave_type_id: Optional[int] = None
+    ):
+        """Get leave applications with optional filtering and pagination"""
         query = db.query(models.LeaveApplication)
         
         # Apply filters
@@ -85,13 +99,24 @@ class LeaveService:
         if status_code is not None:
             query = query.filter(models.LeaveApplication.StatusCode == status_code)
         
-        # Apply ordering (required for MSSQL pagination)
-        query = query.order_by(models.LeaveApplication.LeaveApplicationID.desc())
+        if leave_type_id is not None:
+            query = query.filter(models.LeaveApplication.LeaveTypeID == leave_type_id)
         
-        # Apply pagination
-        applications = query.offset(skip).limit(limit).all()
+        # Date range filters
+        if start_date is not None:
+            query = query.filter(models.LeaveApplication.StartDate >= start_date)
         
-        return applications
+        if end_date is not None:
+            query = query.filter(models.LeaveApplication.EndDate <= end_date)
+        
+        # Use pagination utility with StartDate ordering
+        return paginate_query(
+            query=query,
+            skip=skip,
+            limit=limit,
+            order_by_column=models.LeaveApplication.StartDate,
+            order_desc=True
+        )
 
     @staticmethod
     def get_leave_application(db: Session, application_id: int):
@@ -103,6 +128,32 @@ class LeaveService:
         """Create a new leave application"""
         # Check for timesheet conflicts before creating leave application
         check_timesheet_conflicts_for_leave_application(db, application.EmployeeID, application.StartDate, application.EndDate)
+
+        # Prevent overlapping leave applications for the same employee
+        overlapping = db.query(models.LeaveApplication).filter(
+            models.LeaveApplication.EmployeeID == application.EmployeeID,
+            models.LeaveApplication.StatusCode.in_(["Submitted", "Draft", "Manager-Approved", "HR-Approved"]),
+            models.LeaveApplication.StartDate <= application.EndDate,
+            models.LeaveApplication.EndDate >= application.StartDate
+        ).first()
+        if overlapping:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Employee already has a leave application (ID: {overlapping.LeaveApplicationID}) "
+                    f"from {overlapping.StartDate} to {overlapping.EndDate} that overlaps with the requested dates."
+                )
+            )
+        
+        # Business logic: Sick leaves cannot be submitted for future dates
+        leave_type = db.query(models.LeaveType).filter(models.LeaveType.LeaveTypeID == application.LeaveTypeID).first()
+        if leave_type and is_sick_leave_type(leave_type.LeaveTypeName):
+            today = date.today()
+            if application.StartDate > today or application.EndDate > today:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Sick leave cannot be submitted for future dates. Please select past or current dates only."
+                )
         
         # Calculate NumberOfDays if not provided
         if application.NumberOfDays is None:
@@ -151,6 +202,17 @@ class LeaveService:
             if application_update.StartDate and application_update.EndDate:
                 check_timesheet_conflicts_for_leave_application(db, db_application.EmployeeID, application_update.StartDate, application_update.EndDate)
         
+        # Business logic: Sick leaves cannot be submitted for future dates
+        if hasattr(application_update, 'StartDate') and hasattr(application_update, 'EndDate') and application_update.StartDate and application_update.EndDate:
+            leave_type = db.query(models.LeaveType).filter(models.LeaveType.LeaveTypeID == db_application.LeaveTypeID).first()
+            if leave_type and is_sick_leave_type(leave_type.LeaveTypeName):
+                today = date.today()
+                if application_update.StartDate > today or application_update.EndDate > today:
+                    raise HTTPException(
+                        status_code=400, 
+                        detail="Sick leave cannot be submitted for future dates. Please select past or current dates only."
+                    )
+        
         update_data = application_update.dict(exclude_unset=True)
         for field, value in update_data.items():
             setattr(db_application, field, value)
@@ -168,6 +230,28 @@ class LeaveService:
         
         db.delete(db_application)
         db.commit()
+
+    @staticmethod
+    def cancel_leave_application(db: Session, application_id: int):
+        """Cancel a leave application (only if it's in Draft or Submitted status)"""
+        db_application = db.query(models.LeaveApplication).filter(models.LeaveApplication.LeaveApplicationID == application_id).first()
+        if not db_application:
+            raise HTTPException(status_code=404, detail="Leave application not found")
+        
+        # Only allow cancellation if application is in Draft or Submitted status
+        if db_application.StatusCode not in ["Draft", "Submitted"]:
+            raise HTTPException(
+                status_code=400, 
+                detail="Cannot cancel leave application. Only Draft or Submitted applications can be cancelled."
+            )
+        
+        # Update status to Cancelled
+        db_application.StatusCode = "Cancelled"
+        db_application.UpdatedAt = datetime.utcnow()
+        
+        db.commit()
+        db.refresh(db_application)
+        return db_application
 
     @staticmethod
     def get_leave_types(db: Session):
@@ -454,4 +538,73 @@ class LeaveService:
                 EntitledDays=Decimal('0'),  # Default to 0, should be set by HR
                 UsedDays=application.NumberOfDays
             )
-            db.add(new_balance) 
+            db.add(new_balance)
+
+    @staticmethod
+    def check_leave_conflicts(db: Session, start_date: date, end_date: date, manager_id: Optional[int] = None):
+        """Check for leave conflicts among employees under a manager"""
+        from api.employee.models import Employee
+        from api.leave.models import LeaveType
+        
+        # If manager_id not supplied return no conflict
+        if manager_id is None:
+            return {
+                "has_conflict": False,
+                "message": "Manager ID not provided"
+            }
+        
+        # Get all employees under this manager
+        subordinates = db.query(Employee).filter(
+            Employee.ManagerID == manager_id,
+            Employee.IsActive == True
+        ).all()
+        
+        if not subordinates:
+            return {
+                "has_conflict": False,
+                "message": "No subordinates found for this manager"
+            }
+        
+        subordinate_ids = [emp.EmployeeID for emp in subordinates]
+        
+        # Find overlapping leave applications
+        conflicting_applications = db.query(models.LeaveApplication).filter(
+            models.LeaveApplication.EmployeeID.in_(subordinate_ids),
+            models.LeaveApplication.StatusCode.in_(["Submitted", "Manager-Approved", "HR-Approved"]),
+            # Check for date overlap
+            models.LeaveApplication.StartDate <= end_date,
+            models.LeaveApplication.EndDate >= start_date
+        ).all()
+        
+        if not conflicting_applications:
+            return {
+                "has_conflict": False,
+                "message": "No conflicts found"
+            }
+        
+        # Get leave types for better information
+        leave_types = {lt.LeaveTypeID: lt.LeaveTypeName for lt in db.query(LeaveType).all()}
+        
+        conflicting_employees = []
+        for app in conflicting_applications:
+            # Skip the current application being checked
+            if app.StartDate == start_date and app.EndDate == end_date:
+                continue
+                
+            employee = db.query(Employee).filter(Employee.EmployeeID == app.EmployeeID).first()
+            if employee:
+                conflicting_employees.append({
+                    "employee_id": app.EmployeeID,
+                    "employee_name": f"{employee.FirstName} {employee.LastName}",
+                    "leave_dates": [app.StartDate.strftime("%Y-%m-%d"), app.EndDate.strftime("%Y-%m-%d")],
+                    "leave_type": leave_types.get(app.LeaveTypeID, "Unknown")
+                })
+        
+        # Check if we have 2 or more conflicting employees
+        unique_employees = len(set(emp["employee_id"] for emp in conflicting_employees))
+        
+        return {
+            "has_conflict": unique_employees >= 2,
+            "conflicting_employees": conflicting_employees if unique_employees >= 2 else [],
+            "message": f"Found {unique_employees} employees with overlapping leave dates" if unique_employees >= 2 else "No significant conflicts"
+        } 

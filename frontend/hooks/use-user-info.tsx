@@ -1,9 +1,10 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { api } from "@/lib/api"
+import { fetchUserRoles } from "@/lib/role-utils"
 
-export interface UserInfo {
+interface UserInfo {
   email: string
   name: string
   department: string
@@ -15,72 +16,136 @@ export interface UserInfo {
   joinDate?: string
 }
 
-interface UseUserInfoResult {
-  userInfo: UserInfo | null
-  loading: boolean
+interface EmployeeResponse {
+  EmployeeID: number
+  FirstName: string
+  LastName: string
+  GenderCode: string
+  ManagerID?: number
+  TeamID: number
+  LocationID: number
+  DesignationID: number
+  EmploymentTypeCode: string
+  WorkModeCode: string
+  HireDate: string
+  TerminationDate?: string
+  IsActive: boolean
+  CreatedAt: string
+  UpdatedAt: string
+  designation?: {
+    DesignationID: number
+    DesignationName: string
+    IsActive: boolean
+    CreatedAt: string
+  }
+  employment_type?: {
+    EmploymentTypeCode: string
+    EmploymentTypeName: string
+    IsActive: boolean
+    CreatedAt: string
+  }
+  work_mode?: {
+    WorkModeCode: string
+    WorkModeName: string
+    IsActive: boolean
+    CreatedAt: string
+  }
+  gender?: {
+    GenderCode: string
+    GenderName: string
+    IsActive: boolean
+    CreatedAt: string
+  }
 }
 
-export default function useUserInfo(): UseUserInfoResult {
+interface UseUserInfoReturn {
+  userInfo: UserInfo | null
+  loading: boolean
+  error: string | null
+  isFemale: boolean
+  isManager: boolean
+  isHR: boolean
+  refetch: () => Promise<void>
+}
+
+export default function useUserInfo(): UseUserInfoReturn {
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
   const [loading, setLoading] = useState(true)
-  const router = useRouter()
+  const [error, setError] = useState<string | null>(null)
+  const [isFemale, setIsFemale] = useState(false)
+  const [isManager, setIsManager] = useState(false)
+  const [isHR, setIsHR] = useState(false)
 
-  const fetchAndPersistUser = async () => {
+  const fetchUserInfo = async () => {
+    setLoading(true)
+    setError(null)
+    
     try {
-      const { api } = await import("@/lib/api")
-      const user = await api.get<any>("/auth/me")
-      if (typeof window !== "undefined") {
-        localStorage.setItem("userEmail", user.Email || user.Username)
-        localStorage.setItem("userName", user.Username)
-        localStorage.setItem("userType", "employee") // TODO: map real role
+      // Fetch employee profile and roles in parallel
+      const [employeeResponse, { roles, userType }] = await Promise.all([
+        api.get<EmployeeResponse>("/api/employees/profile/current"),
+        fetchUserRoles()
+      ])
+      
+      console.log("Employee response:", employeeResponse)
+      console.log("User roles:", roles)
+      console.log("User type:", userType)
+      
+      // Transform the response to match the expected UserInfo interface
+      const transformedUserInfo: UserInfo = {
+        email: `${employeeResponse.FirstName.toLowerCase()}.${employeeResponse.LastName.toLowerCase()}@company.com`,
+        name: `${employeeResponse.FirstName} ${employeeResponse.LastName}`,
+        department: employeeResponse.designation?.DesignationName || "Unknown",
+        type: userType,
+        employeeId: employeeResponse.EmployeeID.toString(),
+        position: employeeResponse.designation?.DesignationName || "Employee",
+        joinDate: employeeResponse.HireDate,
+        // We'll need to fetch manager name separately if needed
+        managerName: undefined,
+        reportsTo: undefined
       }
-      return {
-        email: user.Email || user.Username,
-        name: user.Username,
-        department: "Unknown",
-        type: "employee",
-      } as UserInfo
-    } catch {
-      return null
+      
+      setUserInfo(transformedUserInfo)
+      
+      // Determine user characteristics based on roles and gender
+      setIsFemale(employeeResponse.GenderCode === 'F')
+      setIsManager(userType === 'manager')
+      setIsHR(userType === 'hr')
+      
+      console.log("User characteristics:", {
+        isFemale: employeeResponse.GenderCode === 'F',
+        isManager: userType === 'manager',
+        isHR: userType === 'hr'
+      })
+      
+    } catch (err: any) {
+      console.error("❌ Failed to fetch user info:", err)
+      setError(err.message || "Failed to fetch user information")
+      
+      // Set default values on error
+      setIsFemale(false)
+      setIsManager(false)
+      setIsHR(false)
+    } finally {
+      setLoading(false)
     }
   }
 
+  const refetch = async () => {
+    await fetchUserInfo()
+  }
+
   useEffect(() => {
-    const storedUserType = localStorage.getItem("userType")
-    const storedUserEmail = localStorage.getItem("userEmail")
-    const token = localStorage.getItem("access_token")
+    fetchUserInfo()
+  }, [])
 
-    const init = async () => {
-      if (!storedUserType || !storedUserEmail) {
-        if (token) {
-          const fetched = await fetchAndPersistUser()
-          if (fetched) {
-            setUserInfo(fetched)
-            setLoading(false)
-            return
-          }
-        }
-        router.push("/")
-        return
-      }
-
-      const info: UserInfo = {
-        email: storedUserEmail,
-        name: localStorage.getItem("userName") || storedUserEmail,
-        department: localStorage.getItem("userDepartment") || "Unknown",
-        type: storedUserType,
-        reportsTo: localStorage.getItem("userReportsTo") || undefined,
-        managerName: localStorage.getItem("userManagerName") || undefined,
-        employeeId: localStorage.getItem("userEmployeeId") || undefined,
-        position: localStorage.getItem("userPosition") || undefined,
-        joinDate: localStorage.getItem("userJoinDate") || undefined,
-      }
-      setUserInfo(info)
-      setLoading(false)
-    }
-
-    init()
-  }, [router])
-
-  return { userInfo, loading }
+  return {
+    userInfo,
+    loading,
+    error,
+    isFemale,
+    isManager,
+    isHR,
+    refetch
+  }
 } 

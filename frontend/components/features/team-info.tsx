@@ -17,6 +17,10 @@ import {
   MessageSquare,
   Video,
 } from "lucide-react"
+import { useCurrentEmployee, useManagerTeamOverview, useCurrentEmployeeHierarchy } from "@/hooks/use-employees"
+import { useTeamsAndDepartments } from "@/hooks/use-teams"
+import { transformEmployeeToFrontend, getInitials, formatJoinDate, getStatusColor, getRoleColor, createLookupMaps } from "@/lib/employee-utils"
+import { EmployeeWithDetails } from "@/lib/types"
 
 interface UserInfo {
   email: string
@@ -34,217 +38,68 @@ interface TeamInfoProps {
   userInfo: UserInfo
 }
 
-// Move large data outside component to prevent recreation
-const ALL_EMPLOYEES = [
-  {
-    id: "CEO001",
-    name: "Robert CEO",
-    position: "Chief Executive Officer",
-    email: "ceo@company.com",
-    phone: "+1 (555) 000-0001",
-    department: "Executive",
-    role: "ceo",
-    joinDate: "2018-01-01",
-    location: "New York, NY",
-    reportsTo: null,
-    managerName: null,
-    status: "active",
-    avatar: null,
-  },
-  {
-    id: "CTO001",
-    name: "David CTO",
-    position: "Chief Technology Officer",
-    email: "cto@company.com",
-    phone: "+1 (555) 000-0002",
-    department: "Technology",
-    role: "cto",
-    joinDate: "2018-06-01",
-    location: "San Francisco, CA",
-    reportsTo: "ceo@company.com",
-    managerName: "Robert CEO",
-    status: "active",
-    avatar: null,
-  },
-  {
-    id: "MGR001",
-    name: "Jane Smith",
-    position: "Engineering Manager",
-    email: "jane.manager@company.com",
-    phone: "+1 (555) 456-7890",
-    department: "Engineering",
-    role: "manager",
-    joinDate: "2020-01-10",
-    location: "New York, NY",
-    reportsTo: "cto@company.com",
-    managerName: "David CTO",
-    status: "active",
-    avatar: null,
-  },
-  {
-    id: "HR001",
-    name: "Sarah Johnson",
-    position: "HR Director",
-    email: "hr.admin@company.com",
-    phone: "+1 (555) 789-0123",
-    department: "Human Resources",
-    role: "hr",
-    joinDate: "2019-06-20",
-    location: "Chicago, IL",
-    reportsTo: "ceo@company.com",
-    managerName: "Robert CEO",
-    status: "active",
-    avatar: null,
-  },
-  {
-    id: "IT001",
-    name: "Mike Wilson",
-    position: "IT Manager",
-    email: "it.support@company.com",
-    phone: "+1 (555) 234-5678",
-    department: "IT Support",
-    role: "it",
-    joinDate: "2021-08-05",
-    location: "Austin, TX",
-    reportsTo: "cto@company.com",
-    managerName: "David CTO",
-    status: "active",
-    avatar: null,
-  },
-  {
-    id: "EMP001",
-    name: "John Doe",
-    position: "Senior Software Engineer",
-    email: "john.doe@company.com",
-    phone: "+1 (555) 123-4567",
-    department: "Engineering",
-    role: "employee",
-    joinDate: "2022-03-15",
-    location: "New York, NY",
-    reportsTo: "jane.manager@company.com",
-    managerName: "Jane Smith",
-    status: "active",
-    avatar: null,
-  },
-  {
-    id: "EMP002",
-    name: "Alice Johnson",
-    position: "Frontend Developer",
-    email: "alice.johnson@company.com",
-    phone: "+1 (555) 234-5678",
-    department: "Engineering",
-    role: "employee",
-    joinDate: "2022-06-20",
-    location: "Remote",
-    reportsTo: "jane.manager@company.com",
-    managerName: "Jane Smith",
-    status: "active",
-    avatar: null,
-  },
-  {
-    id: "EMP003",
-    name: "Bob Wilson",
-    position: "Backend Developer",
-    email: "bob.wilson@company.com",
-    phone: "+1 (555) 345-6789",
-    department: "Engineering",
-    role: "employee",
-    joinDate: "2022-09-10",
-    location: "San Francisco, CA",
-    reportsTo: "jane.manager@company.com",
-    managerName: "Jane Smith",
-    status: "active",
-    avatar: null,
-  },
-  {
-    id: "EMP004",
-    name: "Carol Brown",
-    position: "UX Designer",
-    email: "carol.brown@company.com",
-    phone: "+1 (555) 456-7890",
-    department: "Design",
-    role: "employee",
-    joinDate: "2022-11-05",
-    location: "Chicago, IL",
-    reportsTo: "jane.manager@company.com",
-    managerName: "Jane Smith",
-    status: "active",
-    avatar: null,
-  },
-  {
-    id: "EMP005",
-    name: "David Lee",
-    position: "QA Engineer",
-    email: "david.lee@company.com",
-    phone: "+1 (555) 567-8901",
-    department: "Engineering",
-    role: "employee",
-    joinDate: "2023-01-15",
-    location: "Remote",
-    reportsTo: "jane.manager@company.com",
-    managerName: "Jane Smith",
-    status: "active",
-    avatar: null,
-  },
-  {
-    id: "EMP006",
-    name: "Eva Garcia",
-    position: "DevOps Engineer",
-    email: "eva.garcia@company.com",
-    phone: "+1 (555) 678-9012",
-    department: "Engineering",
-    role: "employee",
-    joinDate: "2023-03-20",
-    location: "Austin, TX",
-    reportsTo: "jane.manager@company.com",
-    managerName: "Jane Smith",
-    status: "active",
-    avatar: null,
-  },
-  {
-    id: "EMP007",
-    name: "Tom Rodriguez",
-    position: "Network Engineer",
-    email: "tom.rodriguez@company.com",
-    phone: "+1 (555) 901-2345",
-    department: "IT Support",
-    role: "employee",
-    joinDate: "2023-04-18",
-    location: "Denver, CO",
-    reportsTo: "it.support@company.com",
-    managerName: "Mike Wilson",
-    status: "active",
-    avatar: null,
-  },
-]
-
 export default function TeamInfo({ userInfo }: TeamInfoProps) {
-  // Memoize expensive calculations
-  const teamData = useMemo(() => {
-    const manager = ALL_EMPLOYEES.find((emp) => emp.email === userInfo.reportsTo)
-    const directReports = ALL_EMPLOYEES.filter((emp) => emp.reportsTo === userInfo.email)
-    const departmentTeam = ALL_EMPLOYEES.filter((emp) => emp.department === userInfo.department)
-    const peers = ALL_EMPLOYEES.filter((emp) => emp.reportsTo === userInfo.reportsTo && emp.email !== userInfo.email)
-    
-    // Get reporting chain
-    const getReportingChain = (email: string): any[] => {
-      const chain = []
-      let currentEmployee = ALL_EMPLOYEES.find((emp) => emp.email === email)
-      
-      while (currentEmployee && currentEmployee.reportsTo) {
-        const manager = ALL_EMPLOYEES.find((emp) => emp.email === currentEmployee.reportsTo)
-        if (manager) {
-          chain.push(manager)
-          currentEmployee = manager
-        } else {
-          break
-        }
-      }
-      return chain
+  // Fetch current employee data
+  const { data: currentEmployee, loading: currentEmployeeLoading, error: currentEmployeeError } = useCurrentEmployee()
+  
+  // Fetch team overview data for managers
+  const { data: teamOverview, loading: teamOverviewLoading, error: teamOverviewError } = useManagerTeamOverview({
+    immediate: userInfo.type === 'manager' || userInfo.type === 'hr'
+  })
+
+  // Fetch current employee hierarchy (reporting chain)
+  const { data: hierarchyData, loading: hierarchyLoading, error: hierarchyError } = useCurrentEmployeeHierarchy({
+    immediate: true
+  })
+
+  // Fetch teams and departments data for lookups
+  const { teamsData, departmentsData, loading: lookupLoading, error: lookupError } = useTeamsAndDepartments()
+
+  // Create lookup maps
+  const { teamLookup, departmentLookup } = useMemo(() => {
+    if (!teamsData?.teams || !departmentsData?.departments) {
+      return { teamLookup: undefined, departmentLookup: undefined }
     }
+    return createLookupMaps(teamsData.teams, departmentsData.departments)
+  }, [teamsData, departmentsData])
+
+  // Debug logging
+  console.log('🔍 TeamInfo Debug:', {
+    userInfoType: userInfo.type,
+    shouldFetchTeamOverview: userInfo.type === 'manager' || userInfo.type === 'hr',
+    currentEmployee,
+    teamOverview,
+    hierarchyData,
+    teamLookup: teamLookup ? 'Available' : 'Not available',
+    departmentLookup: departmentLookup ? 'Available' : 'Not available'
+  })
+
+  // Transform current employee to frontend format
+  const currentEmployeeWithDetails = useMemo(() => {
+    if (!currentEmployee) return null
+    return transformEmployeeToFrontend(currentEmployee, teamLookup, departmentLookup)
+  }, [currentEmployee, teamLookup, departmentLookup])
+
+  // Transform team data to frontend format
+  const teamData = useMemo(() => {
+    if (!teamOverview || !currentEmployeeWithDetails) {
+      return {
+        manager: null,
+        directReports: [],
+        departmentTeam: [],
+        peers: [],
+        reportingChain: []
+      }
+    }
+
+    const manager = teamOverview.manager ? transformEmployeeToFrontend(teamOverview.manager, teamLookup, departmentLookup) : null
+    const directReports = teamOverview.subordinates.map(emp => transformEmployeeToFrontend(emp, teamLookup, departmentLookup))
+    const departmentTeam = [currentEmployeeWithDetails, ...directReports]
+    const peers: EmployeeWithDetails[] = [] // This would need additional API call to get peers
     
-    const reportingChain = getReportingChain(userInfo.email)
-    
+    // Use hierarchy data for reporting chain (managers above current employee)
+    const reportingChain = hierarchyData ? hierarchyData.map(emp => transformEmployeeToFrontend(emp, teamLookup, departmentLookup)) : []
+
     return {
       manager,
       directReports,
@@ -252,56 +107,73 @@ export default function TeamInfo({ userInfo }: TeamInfoProps) {
       peers,
       reportingChain
     }
-  }, [userInfo.email, userInfo.reportsTo, userInfo.department])
-
-  const getInitials = useCallback((name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-  }, [])
-
-  const formatJoinDate = useCallback((dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString("en-US", {
-      month: "long",
-      day: "numeric",
-      year: "numeric",
-    })
-  }, [])
-
-  const getStatusColor = useCallback((status: string) => {
-    switch (status) {
-      case "active":
-        return "bg-green-100 text-green-800"
-      case "away":
-        return "bg-yellow-100 text-yellow-800"
-      case "offline":
-        return "bg-gray-100 text-gray-800"
-      default:
-        return "bg-gray-100 text-gray-800"
-    }
-  }, [])
-
-  const getRoleColor = useCallback((role: string) => {
-    switch (role) {
-      case "ceo":
-        return "from-red-500 to-rose-500"
-      case "cto":
-        return "from-indigo-500 to-blue-500"
-      case "manager":
-        return "from-emerald-500 to-teal-500"
-      case "hr":
-        return "from-purple-500 to-pink-500"
-      case "it":
-        return "from-blue-500 to-cyan-500"
-      default:
-        return "from-orange-500 to-amber-500"
-    }
-  }, [])
+  }, [teamOverview, currentEmployeeWithDetails, teamLookup, departmentLookup])
 
   const { manager, directReports, departmentTeam, peers, reportingChain } = teamData
+
+  // Loading state
+  if (currentEmployeeLoading || teamOverviewLoading || hierarchyLoading || lookupLoading) {
+    return (
+      <div className="space-y-8">
+        <div>
+          <h2 className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">
+            Team & Reporting Structure
+          </h2>
+          <p className="text-gray-600">Loading team information...</p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i} className="border-0 shadow-lg bg-white/80 backdrop-blur-sm animate-pulse">
+              <CardContent className="p-6">
+                <div className="h-20 bg-gray-200 rounded mb-4"></div>
+                <div className="space-y-2">
+                  <div className="h-4 bg-gray-200 rounded"></div>
+                  <div className="h-6 bg-gray-200 rounded"></div>
+                  <div className="h-3 bg-gray-200 rounded"></div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // Error state
+  if (currentEmployeeError || teamOverviewError || hierarchyError || lookupError) {
+    return (
+      <div className="space-y-8">
+        <div>
+          <h2 className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">
+            Team & Reporting Structure
+          </h2>
+          <p className="text-red-600">Error loading team information. Please try again later.</p>
+          {(currentEmployeeError || teamOverviewError || hierarchyError || lookupError) && (
+            <p className="text-sm text-gray-500 mt-2">
+              {currentEmployeeError && `Employee: ${currentEmployeeError.message}`}
+              {teamOverviewError && `Team Overview: ${teamOverviewError.message}`}
+              {hierarchyError && `Hierarchy: ${hierarchyError.message}`}
+              {lookupError && `Lookup: ${lookupError.message}`}
+            </p>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // If no current employee data, show fallback
+  if (!currentEmployeeWithDetails) {
+    return (
+      <div className="space-y-8">
+        <div>
+          <h2 className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">
+            Team & Reporting Structure
+          </h2>
+          <p className="text-gray-600">No employee data available</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-8">
@@ -326,7 +198,7 @@ export default function TeamInfo({ userInfo }: TeamInfoProps) {
             <div className="space-y-1">
               <p className="text-sm font-medium text-gray-600">Department Team</p>
               <p className="text-2xl font-bold text-gray-900">{departmentTeam.length}</p>
-              <p className="text-xs text-gray-500">In {userInfo.department}</p>
+              <p className="text-xs text-gray-500">In {currentEmployeeWithDetails.departmentName || 'Department'}</p>
             </div>
           </CardContent>
         </Card>
@@ -394,7 +266,7 @@ export default function TeamInfo({ userInfo }: TeamInfoProps) {
             <div className="space-y-4">
               {reportingChain.map((person, index) => (
                 <div
-                  key={person.id}
+                  key={person.EmployeeID}
                   className="flex items-center gap-4 p-4 bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl border border-amber-200/50 hover:shadow-md transition-all duration-200"
                 >
                   <div className="flex items-center gap-3">
@@ -405,24 +277,24 @@ export default function TeamInfo({ userInfo }: TeamInfoProps) {
                       <AvatarFallback
                         className={`bg-gradient-to-r ${getRoleColor(person.role)} text-white font-medium`}
                       >
-                        {getInitials(person.name)}
+                        {person.initials}
                       </AvatarFallback>
                     </Avatar>
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center justify-between mb-1">
-                      <h4 className="font-semibold text-gray-900">{person.name}</h4>
+                      <h4 className="font-semibold text-gray-900">{person.fullName}</h4>
                       <Badge className={getStatusColor(person.status)}>{person.status}</Badge>
                     </div>
-                    <p className="text-sm text-gray-600 mb-2">{person.position}</p>
+                    <p className="text-sm text-gray-600 mb-2">{person.designation?.DesignationName}</p>
                     <div className="flex items-center gap-4 text-xs text-gray-500">
                       <span className="flex items-center gap-1">
                         <Mail className="w-3 h-3" />
-                        {person.email}
+                        {person.CompanyEmail}
                       </span>
                       <span className="flex items-center gap-1">
                         <MapPin className="w-3 h-3" />
-                        {person.location}
+                        {person.City}, {person.State}
                       </span>
                     </div>
                   </div>
@@ -457,32 +329,32 @@ export default function TeamInfo({ userInfo }: TeamInfoProps) {
                 <AvatarFallback
                   className={`bg-gradient-to-r ${getRoleColor(manager.role)} text-white font-medium text-lg`}
                 >
-                  {getInitials(manager.name)}
+                  {manager.initials}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1">
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-xl font-semibold text-gray-900">{manager.name}</h3>
+                  <h3 className="text-xl font-semibold text-gray-900">{manager.fullName}</h3>
                   <Badge className={getStatusColor(manager.status)}>{manager.status}</Badge>
                 </div>
-                <p className="text-gray-600 mb-3">{manager.position}</p>
+                <p className="text-gray-600 mb-3">{manager.designation?.DesignationName}</p>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                   <div className="flex items-center gap-2">
                     <Mail className="w-4 h-4 text-gray-400" />
-                    <span className="text-gray-600">{manager.email}</span>
+                    <span className="text-gray-600">{manager.CompanyEmail}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Phone className="w-4 h-4 text-gray-400" />
-                    <span className="text-gray-600">{manager.phone}</span>
+                    <span className="text-gray-600">{manager.WorkPhone || 'N/A'}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <MapPin className="w-4 h-4 text-gray-400" />
-                    <span className="text-gray-600">{manager.location}</span>
+                    <span className="text-gray-600">{manager.City}, {manager.State}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Calendar className="w-4 h-4 text-gray-400" />
-                    <span className="text-gray-600">Since {formatJoinDate(manager.joinDate)}</span>
+                    <span className="text-gray-600">Since {formatJoinDate(manager.HireDate)}</span>
                   </div>
                 </div>
 
@@ -520,30 +392,30 @@ export default function TeamInfo({ userInfo }: TeamInfoProps) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {directReports.map((member) => (
                 <div
-                  key={member.id}
+                  key={member.EmployeeID}
                   className="flex items-start gap-3 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-200/50 hover:shadow-md transition-all duration-200"
                 >
                   <Avatar className="w-12 h-12 ring-2 ring-purple-200 shadow-md">
                     <AvatarFallback className={`bg-gradient-to-r ${getRoleColor(member.role)} text-white font-medium`}>
-                      {getInitials(member.name)}
+                      {member.initials}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
-                      <h4 className="font-semibold text-gray-900 truncate">{member.name}</h4>
+                      <h4 className="font-semibold text-gray-900 truncate">{member.fullName}</h4>
                       <Badge className={getStatusColor(member.status)} variant="secondary">
                         {member.status}
                       </Badge>
                     </div>
-                    <p className="text-sm text-gray-600 mb-2">{member.position}</p>
+                    <p className="text-sm text-gray-600 mb-2">{member.designation?.DesignationName}</p>
                     <div className="flex items-center gap-4 text-xs text-gray-500">
                       <span className="flex items-center gap-1">
                         <Mail className="w-3 h-3" />
-                        {member.email.split("@")[0]}
+                        {member.CompanyEmail.split("@")[0]}
                       </span>
                       <span className="flex items-center gap-1">
                         <Calendar className="w-3 h-3" />
-                        {new Date(member.joinDate).getFullYear()}
+                        {new Date(member.HireDate).getFullYear()}
                       </span>
                     </div>
                     <div className="flex gap-1 mt-2">
@@ -576,7 +448,7 @@ export default function TeamInfo({ userInfo }: TeamInfoProps) {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {peers.map((peer) => (
                 <div
-                  key={peer.id}
+                  key={peer.EmployeeID}
                   className="p-4 rounded-xl border bg-gradient-to-r from-blue-50 to-cyan-50 border-blue-200/50 hover:shadow-md transition-all duration-200"
                 >
                   <div className="flex items-start gap-3">
@@ -584,25 +456,25 @@ export default function TeamInfo({ userInfo }: TeamInfoProps) {
                       <AvatarFallback
                         className={`bg-gradient-to-r ${getRoleColor(peer.role)} text-white font-medium text-sm`}
                       >
-                        {getInitials(peer.name)}
+                        {peer.initials}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-1">
-                        <h4 className="font-semibold text-gray-900 truncate text-sm">{peer.name}</h4>
+                        <h4 className="font-semibold text-gray-900 truncate text-sm">{peer.fullName}</h4>
                         <Badge className={getStatusColor(peer.status)} variant="secondary">
                           {peer.status}
                         </Badge>
                       </div>
-                      <p className="text-xs text-gray-600 mb-2">{peer.position}</p>
+                      <p className="text-xs text-gray-600 mb-2">{peer.designation?.DesignationName}</p>
                       <div className="flex items-center gap-3 text-xs text-gray-500">
                         <span className="flex items-center gap-1">
                           <Building2 className="w-3 h-3" />
-                          <span>{peer.department}</span>
+                          <span>{peer.departmentName || 'Department'}</span>
                         </span>
                         <span className="flex items-center gap-1">
                           <MapPin className="w-3 h-3" />
-                          <span>{peer.location.split(",")[0]}</span>
+                          <span>{peer.City}</span>
                         </span>
                       </div>
                     </div>
@@ -619,7 +491,7 @@ export default function TeamInfo({ userInfo }: TeamInfoProps) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Users className="w-5 h-5 text-orange-600" />
-            {userInfo.department} Team ({departmentTeam.length})
+            {currentEmployeeWithDetails.departmentName || 'Department'} Team ({departmentTeam.length})
           </CardTitle>
           <CardDescription>All members of your department</CardDescription>
         </CardHeader>
@@ -627,9 +499,9 @@ export default function TeamInfo({ userInfo }: TeamInfoProps) {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {departmentTeam.map((member) => (
               <div
-                key={member.id}
+                key={member.EmployeeID}
                 className={`p-4 rounded-xl border transition-all duration-200 hover:shadow-md ${
-                  member.email === userInfo.email
+                  member.EmployeeID === currentEmployeeWithDetails.EmployeeID
                     ? "bg-gradient-to-r from-orange-50 to-amber-50 border-orange-200/50 ring-2 ring-orange-300"
                     : "bg-gradient-to-r from-gray-50 to-slate-50 border-gray-200/50"
                 }`}
@@ -638,37 +510,37 @@ export default function TeamInfo({ userInfo }: TeamInfoProps) {
                   <Avatar className="w-10 h-10 ring-2 ring-white shadow-md">
                     <AvatarFallback
                       className={`font-medium text-white text-sm ${
-                        member.email === userInfo.email
+                        member.EmployeeID === currentEmployeeWithDetails.EmployeeID
                           ? "bg-gradient-to-r from-orange-500 to-amber-500"
                           : `bg-gradient-to-r ${getRoleColor(member.role)}`
                       }`}
                     >
-                      {getInitials(member.name)}
+                      {member.initials}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
                       <h4 className="font-semibold text-gray-900 truncate text-sm">
-                        {member.name}
-                        {member.email === userInfo.email && <span className="text-orange-600 ml-1">(You)</span>}
+                        {member.fullName}
+                        {member.EmployeeID === currentEmployeeWithDetails.EmployeeID && <span className="text-orange-600 ml-1">(You)</span>}
                       </h4>
                       <Badge className={getStatusColor(member.status)} variant="secondary">
                         {member.status}
                       </Badge>
                     </div>
-                    <p className="text-xs text-gray-600 mb-2">{member.position}</p>
+                    <p className="text-xs text-gray-600 mb-2">{member.designation?.DesignationName}</p>
                     <div className="space-y-1 text-xs text-gray-500">
                       <div className="flex items-center gap-1">
                         <Building2 className="w-3 h-3" />
-                        <span>{member.id}</span>
+                        <span>{member.EmployeeCode}</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <MapPin className="w-3 h-3" />
-                        <span>{member.location}</span>
+                        <span>{member.City}, {member.State}</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <Clock className="w-3 h-3" />
-                        <span>Joined {new Date(member.joinDate).getFullYear()}</span>
+                        <span>Joined {new Date(member.HireDate).getFullYear()}</span>
                       </div>
                     </div>
                   </div>

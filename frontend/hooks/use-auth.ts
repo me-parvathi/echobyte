@@ -3,10 +3,12 @@
 import { useState } from "react"
 import { api } from "@/lib/api"
 import { LoginRequest, LoginResponse, UserResponse } from "@/lib/types"
+import { fetchUserRoles } from "@/lib/role-utils"
 
 interface UseAuthReturn {
   login: (credentials: LoginRequest) => Promise<LoginResponse | null>
   logout: () => void
+  refreshToken: () => Promise<boolean>
   loading: boolean
   error: string | null
 }
@@ -15,13 +17,45 @@ export function useAuth(): UseAuthReturn {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const refreshToken = async (): Promise<boolean> => {
+    try {
+      const refreshToken = localStorage.getItem('refresh_token')
+      if (!refreshToken) {
+        console.log('No refresh token available')
+        return false
+      }
+
+      console.log('🔄 Manually refreshing token...')
+      const response = await api.post<LoginResponse>("/api/auth/refresh", {
+        refresh_token: refreshToken
+      })
+
+      if (response && response.access_token) {
+        localStorage.setItem("access_token", response.access_token)
+        console.log('✅ Token refreshed successfully')
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error('❌ Manual token refresh failed:', error)
+      // Clear tokens on failure
+      localStorage.removeItem('access_token')
+      localStorage.removeItem('refresh_token')
+      return false
+    }
+  }
+
   const login = async (credentials: LoginRequest): Promise<LoginResponse | null> => {
     setLoading(true)
     setError(null)
+    
+    console.log("🔐 Starting login process...", { username: credentials.username })
 
     try {
       // Call backend login endpoint
-      const response = await api.post<LoginResponse>("/auth/login", credentials)
+      console.log("📡 Making API call to /api/auth/login...")
+      const response = await api.post<LoginResponse>("/api/auth/login", credentials)
+      console.log("✅ Login successful:", response)
 
       // Persist tokens in localStorage (browser only)
       if (typeof window !== "undefined") {
@@ -29,23 +63,50 @@ export function useAuth(): UseAuthReturn {
         localStorage.setItem("refresh_token", response.refresh_token)
         // Store basic identity to satisfy dashboard guard; refined later
         localStorage.setItem("userEmail", credentials.username)
-        localStorage.setItem("userType", "employee")
+        console.log("💾 Tokens stored in localStorage")
       }
 
-      // Optionally fetch user info and store basic details
+      // Fetch user info and roles
       try {
-        const userInfo = await api.get<UserResponse>("/auth/me")
+        console.log("👤 Fetching user info...")
+        const userInfo = await api.get<UserResponse>("/api/auth/me")
+        console.log("✅ User info fetched:", userInfo)
+
+        // Fetch user roles and determine user type
+        const { roles, userType } = await fetchUserRoles()
+        console.log("✅ User roles and type determined:", { roles, userType })
+
         if (typeof window !== "undefined") {
           localStorage.setItem("userEmail", userInfo.Email)
           localStorage.setItem("userName", userInfo.Username)
-          localStorage.setItem("userType", "employee") // Placeholder role, adjust when role endpoint is used
+          localStorage.setItem("userType", userType)
+          console.log("💾 User info and roles stored in localStorage")
         }
-      } catch {
+      } catch (userError) {
+        console.warn("⚠️ Failed to fetch user info or roles:", userError)
+        // Set default user type if role fetching fails
+        if (typeof window !== "undefined") {
+          localStorage.setItem("userType", "employee")
+        }
+      }
+
+      // Fetch current employee information and store employee ID
+      try {
+        console.log("👤 Fetching employee info...")
+        const employeeInfo = await api.get<any>("/api/employees/profile/current")
+        console.log("✅ Employee info fetched:", employeeInfo)
+        if (typeof window !== "undefined" && employeeInfo.EmployeeID) {
+          localStorage.setItem("employeeId", employeeInfo.EmployeeID.toString())
+          console.log("💾 Employee ID stored in localStorage:", employeeInfo.EmployeeID)
+        }
+      } catch (employeeError) {
+        console.warn("⚠️ Failed to fetch employee info:", employeeError)
         // Silently ignore for now – can be handled by caller
       }
 
       return response
     } catch (err: any) {
+      console.error("❌ Login failed:", err)
       setError(err.message || "Login failed")
       return null
     } finally {
@@ -60,8 +121,9 @@ export function useAuth(): UseAuthReturn {
       localStorage.removeItem("userEmail")
       localStorage.removeItem("userName")
       localStorage.removeItem("userType")
+      localStorage.removeItem("employeeId")
     }
   }
 
-  return { login, logout, loading, error }
+  return { login, logout, refreshToken, loading, error }
 } 

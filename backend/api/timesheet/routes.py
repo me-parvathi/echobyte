@@ -52,6 +52,36 @@ def get_my_timesheets(
     
     return service.TimesheetService.get_timesheets(db, skip, limit, employee.EmployeeID, status_code)
 
+# Check for timesheet conflicts when submitting leave applications
+@router.get("/check-leave-conflicts")
+def check_leave_timesheet_conflicts(
+    start_date: date = Query(..., description="Start date of leave period"),
+    end_date: date = Query(..., description="End date of leave period"),
+    current_user = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Check for timesheet conflicts when submitting leave applications"""
+    # Get employee ID for current user
+    from api.employee.models import Employee
+    employee = db.query(Employee).filter(
+        Employee.UserID == current_user.UserID,
+        Employee.IsActive == True
+    ).first()
+    
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found for current user")
+    
+    # Validate date range
+    if start_date > end_date:
+        raise HTTPException(status_code=400, detail="Start date must be before or equal to end date")
+    
+    # Check for conflicts
+    conflict_info = service.TimesheetService.check_leave_timesheet_conflicts(
+        db, employee.EmployeeID, start_date, end_date
+    )
+    
+    return conflict_info
+
 @router.get("/my/timesheet/{timesheet_id}", response_model=schemas.TimesheetWithDetailsResponse)
 def get_my_timesheet(
     timesheet_id: int,
@@ -464,7 +494,7 @@ def get_employee_timesheet_batch(
     db: Session = Depends(get_db),
     current_user = Depends(require_manager)  # Require manager or admin role
 ):
-    """Get batched timesheet data for any employee (Manager/Admin only)"""
+    """Get employee's timesheet batch (manager/admin only)"""
     return service.TimesheetService.get_employee_timesheet_batch(
         db, employee_id, week_start_date, include_history, history_limit
     ) 

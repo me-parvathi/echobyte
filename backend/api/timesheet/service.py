@@ -14,7 +14,8 @@ from core.timesheet_utils import (
     is_valid_work_date,
     get_employee_timesheets_for_period,
     check_leave_conflicts_for_timesheet_upload,
-    check_leave_conflicts_for_timesheet_submission
+    check_leave_conflicts_for_timesheet_submission,
+    check_leave_conflicts_for_timesheet_approval
 )
 
 # Placeholder service for timesheets
@@ -313,6 +314,10 @@ class TimesheetService:
         
         db.commit()
         db.refresh(db_detail)
+        
+        # Update timesheet total hours after modifying detail
+        update_timesheet_total_hours(db, db_detail.TimesheetID)
+        
         return db_detail
     
     @staticmethod
@@ -322,8 +327,13 @@ class TimesheetService:
         if not db_detail:
             raise HTTPException(status_code=404, detail="Timesheet detail not found")
         
+        timesheet_id = db_detail.TimesheetID
         db.delete(db_detail)
         db.commit()
+        
+        # Update timesheet total hours after deleting detail
+        update_timesheet_total_hours(db, timesheet_id)
+        
         return True
     
     @staticmethod
@@ -362,6 +372,16 @@ class TimesheetService:
         db_timesheet = TimesheetService.get_timesheet(db, timesheet_id)
         if not db_timesheet:
             raise HTTPException(status_code=404, detail="Timesheet not found")
+        
+        # Check for leave conflicts before approval
+        check_leave_conflicts_for_timesheet_approval(db, timesheet_id)
+        
+        # Validate that timesheet is in submitted state
+        if db_timesheet.StatusCode != "Submitted":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Timesheet cannot be approved. Current status: {db_timesheet.StatusCode}"
+            )
         
         db_timesheet.StatusCode = approval.status
         db_timesheet.ApprovedByID = approval.approved_by_id
@@ -583,3 +603,60 @@ class TimesheetService:
         
         print(f"DEBUG: Final result: {result}")
         return result 
+
+    @staticmethod
+    def check_leave_timesheet_conflicts(
+        db: Session,
+        employee_id: int,
+        start_date: date,
+        end_date: date
+    ) -> dict:
+        """
+        Check for timesheet conflicts when submitting leave applications.
+        Returns conflict information if there are submitted or approved timesheets
+        for the leave period.
+        """
+        from datetime import timedelta
+        
+        # Get all timesheets for the employee that overlap with the leave period
+        # and are in submitted or approved status
+        conflicting_timesheets = db.query(models.Timesheet).filter(
+            models.Timesheet.EmployeeID == employee_id,
+            models.Timesheet.StatusCode.in_(["Submitted", "Approved"]),
+            # Check for overlap: timesheet week overlaps with leave period
+            models.Timesheet.WeekStartDate <= end_date,
+            models.Timesheet.WeekEndDate >= start_date
+        ).all()
+        
+        if not conflicting_timesheets:
+            return {
+                "has_conflict": False,
+                "message": None,
+                "conflicting_dates": []
+            }
+        
+        # Get specific dates that have timesheet entries
+        conflicting_dates = []
+        for timesheet in conflicting_timesheets:
+            # Get timesheet details for the specific dates
+            details = db.query(models.TimesheetDetail).filter(
+                models.TimesheetDetail.TimesheetID == timesheet.TimesheetID,
+                models.TimesheetDetail.WorkDate >= start_date,
+                models.TimesheetDetail.WorkDate <= end_date
+            ).all()
+            
+            for detail in details:
+                conflicting_dates.append(detail.WorkDate.strftime("%Y-%m-%d"))
+        
+        if conflicting_dates:
+            return {
+                "has_conflict": True,
+                "message": f"Timesheet conflicts detected for the selected leave period. You have submitted or approved timesheets for: {', '.join(conflicting_dates)}. Please contact your manager to resolve this conflict.",
+                "conflicting_dates": conflicting_dates
+            }
+        
+        return {
+            "has_conflict": False,
+            "message": None,
+            "conflicting_dates": []
+        } 

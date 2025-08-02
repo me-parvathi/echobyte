@@ -24,16 +24,32 @@ export default function LoginPage() {
     const userEmail = localStorage.getItem("userEmail")
     const userType = localStorage.getItem("userType")
 
+    console.log("🔍 Login page - Checking auth status:", { 
+      hasToken: !!token, 
+      userEmail, 
+      userType 
+    })
+
     if (token && userEmail && userType) {
+      console.log("✅ User authenticated, redirecting to dashboard")
       router.push("/dashboard")
+    } else {
+      console.log("❌ User not authenticated, staying on login")
     }
   }, [router])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
+    console.log("🚀 Login form submitted with:", { username, password: "***" })
+    
     const result = await login({ username, password })
+    console.log("📋 Login result:", result ? "SUCCESS" : "FAILED")
+    
     if (result) {
+      console.log("✅ Login successful, redirecting to dashboard")
       router.push("/dashboard")
+    } else {
+      console.log("❌ Login failed, staying on login page")
     }
   }
 

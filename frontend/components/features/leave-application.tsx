@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,83 +10,201 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Calendar, Clock, CheckCircle, XCircle, AlertCircle, Plus, FileText } from "lucide-react"
-import WorkflowManager from "@/lib/workflow-manager"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Calendar, Clock, CheckCircle, XCircle, AlertCircle, Plus, FileText, Trash2, Edit } from "lucide-react"
+import { useLeaveManagement } from "@/hooks/use-leave"
+import { getCurrentEmployeeId, getCurrentUserInfo } from "@/lib/utils"
+import type { LeaveApplication, LeaveType, LeaveBalanceSummary, LeaveFilterParams } from "@/lib/types"
+import { useToast } from "@/hooks/use-toast"
+import { Pagination } from "@/components/ui/pagination"
+import { LeaveFilters } from "@/components/ui/leave-filters"
 
 export default function LeaveApplication() {
+  const { toast } = useToast()
+  
   const [leaveType, setLeaveType] = useState("")
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
   const [reason, setReason] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [editingApplication, setEditingApplication] = useState<LeaveApplication | null>(null)
+  const [timesheetConflict, setTimesheetConflict] = useState<string | null>(null)
+  const [calculatedDays, setCalculatedDays] = useState<number>(0)
+  const [isFiltersExpanded, setIsFiltersExpanded] = useState(false)
 
-  const leaveBalance = [
-    { type: "Vacation", available: 18, used: 7, total: 25, color: "bg-blue-100 text-blue-800" },
-    { type: "Sick", available: 12, used: 3, total: 15, color: "bg-green-100 text-green-800" },
-    { type: "Personal", available: 5, used: 0, total: 5, color: "bg-purple-100 text-purple-800" },
-    { type: "Comp Off", available: 2, used: 1, total: 3, color: "bg-orange-100 text-orange-800" },
-  ]
+  const currentEmployeeId = getCurrentEmployeeId()
+  const currentUser = getCurrentUserInfo()
 
-  const leaveHistory = [
-    {
-      id: 1,
-      type: "Vacation",
-      dates: "Dec 25-27, 2024",
-      days: 3,
-      status: "pending",
-      reason: "Christmas holidays",
-      appliedDate: "2024-12-15",
+  // Helper function to check if selected leave type is sick leave
+  const isSickLeave = () => {
+    const selectedType = leaveTypes.find(lt => lt.LeaveTypeID.toString() === leaveType)
+    return selectedType?.LeaveTypeName.toLowerCase().includes('sick') || false
+  }
+
+  // Helper functions to check if applications can be edited or canceled
+  const canEditApplication = (application: LeaveApplication) => {
+    const status = application.StatusCode.toLowerCase()
+    return status === "draft" || status === "submitted"
+  }
+
+  const canCancelApplication = (application: LeaveApplication) => {
+    const status = application.StatusCode.toLowerCase()
+    return status === "draft" || status === "submitted"
+  }
+
+  // Helper function to check if form can be saved as draft
+  const canSaveAsDraft = () => {
+    return leaveType && startDate && endDate && reason.trim() && !isSubmitting
+  }
+
+  // Shared validation function
+  const validateFormData = (): { isValid: boolean; error?: string } => {
+    if (!currentEmployeeId) {
+      return { isValid: false, error: "Employee ID not found. Please log in again." }
+    }
+
+    if (!leaveType) {
+      return { isValid: false, error: "Please select a leave type" }
+    }
+
+    if (!startDate) {
+      return { isValid: false, error: "Please select a start date" }
+    }
+
+    if (!endDate) {
+      return { isValid: false, error: "Please select an end date" }
+    }
+
+    if (!reason.trim()) {
+      return { isValid: false, error: "Please provide a reason for your leave request" }
+    }
+
+    // Business logic: Sick leaves cannot be submitted for future dates
+    const selectedLeaveType = leaveTypes.find(lt => lt.LeaveTypeID.toString() === leaveType)
+    if (selectedLeaveType) {
+      const isSickLeaveType = isSickLeave()
+      const today = new Date()
+      today.setHours(0, 0, 0, 0) // Reset time to start of day
+      
+      const startDateObj = new Date(startDate)
+      const endDateObj = new Date(endDate)
+      
+      if (isSickLeaveType && (startDateObj > today || endDateObj > today)) {
+        return { isValid: false, error: "Sick leave cannot be submitted for future dates. Please select past or current dates only." }
+      }
+    }
+
+    if (timesheetConflict) {
+      return { isValid: false, error: timesheetConflict }
+    }
+
+    return { isValid: true }
+  }
+
+  const {
+    leaveApplications,
+    leaveTypes,
+    leaveBalance,
+    loading,
+    error,
+    pagination,
+    paginationInfo,
+    filters,
+    createLeaveApplication,
+    updateLeaveApplication,
+    deleteLeaveApplication,
+    cancelLeaveApplication,
+    calculateLeaveDays,
+    checkTimesheetConflicts,
+    refreshData,
+    updateFilters,
+    clearFilters,
+    nextPage,
+    previousPage,
+    goToPage
+  } = useLeaveManagement({
+    employeeId: currentEmployeeId || undefined,
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "Leave application updated successfully",
+      })
     },
-    {
-      id: 2,
-      type: "Sick Leave",
-      dates: "Dec 15, 2024",
-      days: 1,
-      status: "approved",
-      reason: "Medical appointment",
-      appliedDate: "2024-12-14",
-    },
-    {
-      id: 3,
-      type: "Personal",
-      dates: "Nov 28, 2024",
-      days: 1,
-      status: "approved",
-      reason: "Family event",
-      appliedDate: "2024-11-25",
-    },
-    {
-      id: 4,
-      type: "Comp Off",
-      dates: "Nov 20, 2024",
-      days: 1,
-      status: "approved",
-      reason: "Overtime compensation",
-      appliedDate: "2024-11-18",
-    },
-  ]
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      })
+    }
+  })
+
+  // Calculate days when dates change
+  useEffect(() => {
+    if (startDate && endDate) {
+      calculateLeaveDays(startDate, endDate).then(result => {
+        setCalculatedDays(result.number_of_days)
+      }).catch(() => {
+        // Fallback calculation
+        const start = new Date(startDate)
+        const end = new Date(endDate)
+        const diffTime = Math.abs(end.getTime() - start.getTime())
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
+        setCalculatedDays(diffDays)
+      })
+    }
+  }, [startDate, endDate])
+
+  // Check for timesheet conflicts when dates change
+  useEffect(() => {
+    if (startDate && endDate) {
+      checkTimesheetConflicts(startDate, endDate).then(result => {
+        if (result.has_conflict) {
+          setTimesheetConflict(result.message || "Timesheet conflicts detected for the selected dates")
+        } else {
+          setTimesheetConflict(null)
+        }
+      }).catch(() => {
+        setTimesheetConflict(null)
+      })
+    }
+  }, [startDate, endDate])
 
   const getStatusIcon = (status: string) => {
-    switch (status) {
+    switch (status.toLowerCase()) {
       case "approved":
+      case "hr-approved":
+      case "manager-approved":
         return <CheckCircle className="w-4 h-4 text-green-600" />
+      case "submitted":
       case "pending":
         return <AlertCircle className="w-4 h-4 text-yellow-600" />
       case "rejected":
         return <XCircle className="w-4 h-4 text-red-600" />
+      case "draft":
+        return <Clock className="w-4 h-4 text-gray-600" />
+      case "cancelled":
+        return <XCircle className="w-4 h-4 text-orange-600" />
       default:
         return <Clock className="w-4 h-4 text-gray-600" />
     }
   }
 
   const getStatusColor = (status: string) => {
-    switch (status) {
+    switch (status.toLowerCase()) {
       case "approved":
+      case "hr-approved":
+      case "manager-approved":
         return "bg-green-100 text-green-800"
+      case "submitted":
       case "pending":
         return "bg-yellow-100 text-yellow-800"
       case "rejected":
         return "bg-red-100 text-red-800"
+      case "draft":
+        return "bg-gray-100 text-gray-800"
+      case "cancelled":
+        return "bg-orange-100 text-orange-800"
       default:
         return "bg-gray-100 text-gray-800"
     }
@@ -94,59 +212,273 @@ export default function LeaveApplication() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    const validationResult = validateFormData()
+    if (!validationResult.isValid) {
+      toast({
+        title: "Error",
+        description: validationResult.error || "Failed to submit leave application",
+        variant: "destructive",
+      })
+      return
+    }
+
     setIsSubmitting(true)
 
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 2000))
+    try {
+      const selectedLeaveType = leaveTypes.find(lt => lt.LeaveTypeID.toString() === leaveType)
+      
+      if (!selectedLeaveType) {
+        throw new Error("Please select a valid leave type")
+      }
 
-    // Get user info from localStorage
-    const userEmail = localStorage.getItem("userEmail") || ""
-    const userName = localStorage.getItem("userName") || ""
-    const userDepartment = localStorage.getItem("userDepartment") || ""
-    const userType = localStorage.getItem("userType") || ""
+      const applicationData = {
+        EmployeeID: currentEmployeeId!,
+        LeaveTypeID: selectedLeaveType.LeaveTypeID,
+        StartDate: startDate,
+        EndDate: endDate,
+        NumberOfDays: calculatedDays,
+        Reason: reason,
+        StatusCode: "Submitted",
+        calculation_type: "business",
+        exclude_holidays: true
+      }
 
-    // Submit to workflow system
-    const workflowManager = WorkflowManager.getInstance()
-    const requestId = workflowManager.submitRequest({
-      type: "leave",
-      submittedBy: {
-        email: userEmail,
-        name: userName,
-        department: userDepartment,
-        role: userType,
-      },
-      data: {
-        leaveType,
-        startDate,
-        endDate,
-        reason,
-        days: calculateDays(),
-      },
-      priority: "medium",
-    })
+      if (editingApplication) {
+        await updateLeaveApplication(editingApplication.LeaveApplicationID, applicationData)
+        setEditingApplication(null)
+      } else {
+        await createLeaveApplication(applicationData)
+      }
 
-    console.log("Leave request submitted with ID:", requestId)
+      // Reset form
+      setLeaveType("")
+      setStartDate("")
+      setEndDate("")
+      setReason("")
+      setCalculatedDays(0)
+      setTimesheetConflict(null)
 
-    // Reset form
+      toast({
+        title: "Success",
+        description: editingApplication 
+          ? "Leave application updated successfully" 
+          : "Leave application submitted successfully",
+      })
+    } catch (error) {
+      console.error("Leave application error:", error)
+      const defaultMsg = "Failed to submit leave application";
+      let msg = defaultMsg;
+      if (error instanceof Error) {
+        msg = error.message.includes("already has a leave application")
+          ? "Submission not allowed. You already have a leave request for these dates. Please edit or cancel the existing application."
+          : error.message;
+      }
+      
+      toast({
+        title: "Error",
+        description: msg,
+        variant: "destructive",
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleSaveAsDraft = async () => {
+    const validationResult = validateFormData()
+    if (!validationResult.isValid) {
+      toast({
+        title: "Error",
+        description: validationResult.error || "Failed to save leave application as draft",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsSubmitting(true)
+
+    try {
+      const selectedLeaveType = leaveTypes.find(lt => lt.LeaveTypeID.toString() === leaveType)
+      
+      if (!selectedLeaveType) {
+        throw new Error("Please select a valid leave type")
+      }
+
+      const applicationData = {
+        EmployeeID: currentEmployeeId!,
+        LeaveTypeID: selectedLeaveType.LeaveTypeID,
+        StartDate: startDate,
+        EndDate: endDate,
+        NumberOfDays: calculatedDays,
+        Reason: reason,
+        StatusCode: "Draft",
+        calculation_type: "business",
+        exclude_holidays: true
+      }
+
+      if (editingApplication) {
+        await updateLeaveApplication(editingApplication.LeaveApplicationID, applicationData)
+        setEditingApplication(null)
+      } else {
+        await createLeaveApplication(applicationData)
+      }
+
+      // Reset form
+      setLeaveType("")
+      setStartDate("")
+      setEndDate("")
+      setReason("")
+      setCalculatedDays(0)
+      setTimesheetConflict(null)
+
+      toast({
+        title: "Success",
+        description: editingApplication 
+          ? "Leave application updated as draft successfully" 
+          : "Leave application saved as draft successfully",
+      })
+    } catch (error) {
+      console.error("Save as Draft error:", error)
+      const defaultMsg = "Failed to save leave application as draft";
+      let msg = defaultMsg;
+      if (error instanceof Error) {
+        msg = error.message.includes("already has a leave application")
+          ? "Save as draft not allowed. You already have a leave request for these dates. Edit or cancel the existing application."
+          : error.message;
+      }
+      toast({
+        title: "Error",
+        description: msg,
+        variant: "destructive",
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleEdit = (application: LeaveApplication) => {
+    setEditingApplication(application)
+    setLeaveType(application.LeaveTypeID.toString())
+    setStartDate(application.StartDate)
+    setEndDate(application.EndDate)
+    setReason(application.Reason || "")
+    setCalculatedDays(application.NumberOfDays)
+  }
+
+  const handleDelete = async (applicationId: number) => {
+    if (!confirm("Are you sure you want to delete this leave application?")) {
+      return
+    }
+
+    try {
+      await deleteLeaveApplication(applicationId)
+      toast({
+        title: "Success",
+        description: "Leave application deleted successfully",
+      })
+    } catch (error) {
+      console.error("Delete error:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to delete leave application",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleCancel = async (applicationId: number) => {
+    if (!confirm("Are you sure you want to cancel this leave application?")) {
+      return
+    }
+
+    try {
+      await cancelLeaveApplication(applicationId)
+      toast({
+        title: "Success",
+        description: "Leave application cancelled successfully",
+      })
+    } catch (error) {
+      console.error("Cancel error:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to cancel leave application",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleSubmitDraft = async (application: LeaveApplication) => {
+    if (!confirm("Are you sure you want to submit this draft leave application?")) {
+      return
+    }
+
+    try {
+      const applicationData = {
+        EmployeeID: application.EmployeeID,
+        LeaveTypeID: application.LeaveTypeID,
+        StartDate: application.StartDate,
+        EndDate: application.EndDate,
+        NumberOfDays: application.NumberOfDays,
+        Reason: application.Reason,
+        StatusCode: "Submitted",
+        calculation_type: "business",
+        exclude_holidays: true
+      }
+
+      await updateLeaveApplication(application.LeaveApplicationID, applicationData)
+      toast({
+        title: "Success",
+        description: "Draft leave application submitted successfully",
+      })
+    } catch (error) {
+      console.error("Submit draft error:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to submit draft leave application",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleCancelEdit = () => {
+    setEditingApplication(null)
     setLeaveType("")
     setStartDate("")
     setEndDate("")
     setReason("")
-    setIsSubmitting(false)
-
-    // Show success message (you can add a toast notification here)
-    alert(`Leave request submitted successfully! Request ID: ${requestId}`)
+    setCalculatedDays(0)
+    setTimesheetConflict(null)
   }
 
-  const calculateDays = () => {
-    if (startDate && endDate) {
-      const start = new Date(startDate)
-      const end = new Date(endDate)
-      const diffTime = Math.abs(end.getTime() - start.getTime())
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
-      return diffDays
-    }
-    return 0
+  // Format leave balance data for display
+  const leaveBalanceDisplay = leaveBalance ? [
+    ...leaveBalance.balances.map(balance => ({
+      type: balance.leave_type?.LeaveTypeName || "Unknown",
+      available: balance.EntitledDays - balance.UsedDays,
+      used: balance.UsedDays,
+      total: balance.EntitledDays,
+      color: "bg-blue-100 text-blue-800"
+    }))
+  ] : []
+
+  if (loading && !leaveApplications.length) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertCircle className="h-4 w-4" />
+        <AlertDescription>
+          {error.message}
+        </AlertDescription>
+      </Alert>
+    )
   }
 
   return (
@@ -154,8 +486,28 @@ export default function LeaveApplication() {
       {/* Leave Balance Overview */}
       <div>
         <h2 className="text-2xl font-bold text-gray-900 mb-6">Leave Management</h2>
+        {leaveBalance && (
+          <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <h3 className="font-semibold text-blue-900 mb-2">Leave Balance Summary</h3>
+            <div className="grid grid-cols-3 gap-4 text-sm">
+              <div>
+                <span className="text-blue-700">Total Entitled:</span>
+                <span className="ml-2 font-semibold">{leaveBalance.total_entitled_days} days</span>
+              </div>
+              <div>
+                <span className="text-blue-700">Total Used:</span>
+                <span className="ml-2 font-semibold">{leaveBalance.total_used_days} days</span>
+              </div>
+              <div>
+                <span className="text-blue-700">Remaining:</span>
+                <span className="ml-2 font-semibold">{leaveBalance.total_remaining_days} days</span>
+              </div>
+            </div>
+          </div>
+        )}
+        
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {leaveBalance.map((leave, index) => (
+          {leaveBalanceDisplay.map((leave, index) => (
             <Card key={index} className="border-0 shadow-sm hover:shadow-md transition-shadow duration-200">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between mb-4">
@@ -189,27 +541,38 @@ export default function LeaveApplication() {
         <Card className="border-0 shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Plus className="w-5 h-5" />
-              Apply for Leave
+              {editingApplication ? <Edit className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
+              {editingApplication 
+                ? editingApplication.StatusCode.toLowerCase() === "draft" 
+                  ? "Edit Draft Leave Application" 
+                  : "Edit Leave Application"
+                : "Apply for Leave"
+              }
             </CardTitle>
-            <CardDescription>Submit a new leave request for manager approval</CardDescription>
+            <CardDescription>
+              {editingApplication 
+                ? editingApplication.StatusCode.toLowerCase() === "draft"
+                  ? "Update your draft leave request"
+                  : "Update your leave request" 
+                : "Submit a new leave request for manager approval"
+              }
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
+              
               <div className="space-y-2">
                 <Label htmlFor="leaveType">Leave Type</Label>
-                <Select value={leaveType} onValueChange={setLeaveType} required>
+                <Select value={leaveType} onValueChange={setLeaveType}>
                   <SelectTrigger className="h-11">
                     <SelectValue placeholder="Select leave type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="vacation">Vacation Leave</SelectItem>
-                    <SelectItem value="sick">Sick Leave</SelectItem>
-                    <SelectItem value="personal">Personal Leave</SelectItem>
-                    <SelectItem value="comp-off">Comp Off</SelectItem>
-                    <SelectItem value="maternity">Maternity Leave</SelectItem>
-                    <SelectItem value="paternity">Paternity Leave</SelectItem>
-                    <SelectItem value="emergency">Emergency Leave</SelectItem>
+                    {leaveTypes.map((type) => (
+                      <SelectItem key={type.LeaveTypeID} value={type.LeaveTypeID.toString()}>
+                        {type.LeaveTypeName}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -224,6 +587,7 @@ export default function LeaveApplication() {
                     onChange={(e) => setStartDate(e.target.value)}
                     className="h-11"
                     required
+                    max={isSickLeave() ? new Date().toISOString().split('T')[0] : undefined}
                   />
                 </div>
                 <div className="space-y-2">
@@ -236,6 +600,7 @@ export default function LeaveApplication() {
                     className="h-11"
                     min={startDate}
                     required
+                    max={isSickLeave() ? new Date().toISOString().split('T')[0] : undefined}
                   />
                 </div>
               </div>
@@ -243,9 +608,27 @@ export default function LeaveApplication() {
               {startDate && endDate && (
                 <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
                   <p className="text-sm font-medium text-blue-900">
-                    Duration: {calculateDays()} day{calculateDays() !== 1 ? "s" : ""}
+                    Duration: {calculatedDays} day{calculatedDays !== 1 ? "s" : ""}
                   </p>
                 </div>
+              )}
+
+              {/* Sick leave date restriction notice */}
+              {leaveType && isSickLeave() && (
+                <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                  <p className="text-sm font-medium text-yellow-800">
+                    ⚠️ Sick Leave Restriction: Only past or current dates are allowed
+                  </p>
+                </div>
+              )}
+
+              {timesheetConflict && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    {timesheetConflict}
+                  </AlertDescription>
+                </Alert>
               )}
 
               <div className="space-y-2">
@@ -261,24 +644,50 @@ export default function LeaveApplication() {
                 />
               </div>
 
-              <Button
-                type="submit"
-                className="w-full h-11 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? (
-                  <>
-                    <Clock className="w-4 h-4 mr-2 animate-spin" />
-                    Submitting Request...
-                  </>
-                ) : (
-                  <>
-                    <FileText className="w-4 h-4 mr-2" />
-                    Submit Leave Request
-                  </>
+              <div className="flex gap-3">
+                <Button
+                  type="submit"
+                  className="flex-1 h-11 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                  disabled={isSubmitting || !!timesheetConflict}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Clock className="w-4 h-4 mr-2 animate-spin" />
+                      {editingApplication ? "Updating..." : "Submitting Request..."}
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="w-4 h-4 mr-2" />
+                      {editingApplication ? "Update Leave Request" : "Submit Leave Request"}
+                    </>
+                  )}
+                </Button>
+                
+                {/* Save as Draft button */}
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleSaveAsDraft()}
+                  disabled={!canSaveAsDraft()}
+                  className="h-11"
+                >
+                  <Clock className="w-4 h-4 mr-2" />
+                  {editingApplication ? "Update as Draft" : "Save as Draft"}
+                </Button>
+                
+                {editingApplication && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleCancelEdit}
+                    className="h-11"
+                  >
+                    Cancel
+                  </Button>
                 )}
-              </Button>
+              </div>
             </form>
+            
           </CardContent>
         </Card>
 
@@ -289,31 +698,133 @@ export default function LeaveApplication() {
             <CardDescription>Your recent leave requests and their status</CardDescription>
           </CardHeader>
           <CardContent>
+            {/* Filters */}
+            <LeaveFilters
+              filters={filters}
+              onFiltersChange={updateFilters}
+              onClearFilters={clearFilters}
+              leaveTypes={leaveTypes}
+              loading={loading}
+              isExpanded={isFiltersExpanded}
+              onToggleExpanded={() => setIsFiltersExpanded(!isFiltersExpanded)}
+            />
+
             <div className="space-y-4">
-              {leaveHistory.map((leave) => (
-                <div
-                  key={leave.id}
-                  className="p-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors duration-200"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      {getStatusIcon(leave.status)}
-                      <div>
-                        <p className="font-medium text-gray-900">{leave.type}</p>
-                        <p className="text-sm text-gray-600">{leave.dates}</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <Badge className={getStatusColor(leave.status)}>{leave.status}</Badge>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {leave.days} day{leave.days !== 1 ? "s" : ""}
-                      </p>
-                    </div>
-                  </div>
-                  <p className="text-sm text-gray-600 mb-2">{leave.reason}</p>
-                  <p className="text-xs text-gray-500">Applied on {leave.appliedDate}</p>
+              {leaveApplications.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <FileText className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                  <p>No leave applications found</p>
                 </div>
-              ))}
+              ) : (
+                <>
+                  {leaveApplications.map((application) => {
+                    const leaveType = leaveTypes.find(lt => lt.LeaveTypeID === application.LeaveTypeID)
+                    return (
+                      <div
+                        key={application.LeaveApplicationID}
+                        className="p-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors duration-200"
+                      >
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex items-center gap-3">
+                            {getStatusIcon(application.StatusCode)}
+                            <div>
+                              <p className="font-medium text-gray-900">
+                                {leaveType?.LeaveTypeName || "Unknown Type"}
+                              </p>
+                              <p className="text-sm text-gray-600">
+                                {new Date(`${application.StartDate}T00:00:00`).toLocaleDateString()} - {new Date(`${application.EndDate}T00:00:00`).toLocaleDateString()}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <Badge className={getStatusColor(application.StatusCode)}>
+                              {application.StatusCode}
+                            </Badge>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {application.NumberOfDays} day{application.NumberOfDays !== 1 ? "s" : ""}
+                            </p>
+                          </div>
+                        </div>
+                        
+                        {application.Reason && (
+                          <p className="text-sm text-gray-600 mb-2">{application.Reason}</p>
+                        )}
+                        
+                        <p className="text-xs text-gray-500 mb-3">
+                          Applied on {new Date(`${application.CreatedAt}` ).toLocaleDateString()}
+                          {application.StatusCode.toLowerCase() === "draft" && " • Draft - You can edit, delete, or submit this application"}
+                          {application.StatusCode.toLowerCase() === "submitted" && " • You can edit or cancel this application"}
+                          {application.StatusCode.toLowerCase() === "manager-approved" && " • Approved by manager, pending HR approval"}
+                          {application.StatusCode.toLowerCase() === "hr-approved" && " • Approved by HR"}
+                          {application.StatusCode.toLowerCase() === "rejected" && " • Application was rejected"}
+                          {application.StatusCode.toLowerCase() === "cancelled" && " • Application was cancelled"}
+                        </p>
+
+                        {/* Action buttons for applications that can be edited or canceled */}
+                        {(canEditApplication(application) || canCancelApplication(application)) && (
+                          <div className="flex gap-2 mt-3">
+                            {canEditApplication(application) && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleEdit(application)}
+                                className="h-8"
+                              >
+                                <Edit className="w-3 h-3 mr-1" />
+                                Edit
+                              </Button>
+                            )}
+                            {application.StatusCode.toLowerCase() === "draft" && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleDelete(application.LeaveApplicationID)}
+                                  className="h-8 text-red-600 hover:text-red-700"
+                                >
+                                  <Trash2 className="w-3 h-3 mr-1" />
+                                  Delete
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="default"
+                                  onClick={() => handleSubmitDraft(application)}
+                                  className="h-8 bg-blue-600 hover:bg-blue-700"
+                                >
+                                  <FileText className="w-3 h-3 mr-1" />
+                                  Submit
+                                </Button>
+                              </>
+                            )}
+                            {canCancelApplication(application) && application.StatusCode.toLowerCase() !== "draft" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleCancel(application.LeaveApplicationID)}
+                                className="h-8 text-orange-600 hover:text-orange-700"
+                              >
+                                <XCircle className="w-3 h-3 mr-1" />
+                                Cancel
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                  
+                  {/* Pagination */}
+                  <Pagination
+                    currentPage={pagination.page || 1}
+                    totalPages={paginationInfo.pages}
+                    hasNext={paginationInfo.has_next}
+                    hasPrevious={paginationInfo.has_previous}
+                    onPageChange={goToPage}
+                    totalCount={paginationInfo.total}
+                    pageSize={pagination.limit || 5}
+                  />
+                </>
+              )}
             </div>
           </CardContent>
         </Card>

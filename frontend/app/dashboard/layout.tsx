@@ -4,6 +4,7 @@ import { SidebarProvider } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import DashboardHeader from "@/components/dashboard-header"
 import useUserInfo from "@/hooks/use-user-info"
+import { Toaster } from "@/components/ui/toaster" // Add this import
 import { LayoutDashboard, Clock, Calendar, TicketIcon, Briefcase, BookOpen, GraduationCap, Users, Search, User, Zap, Settings, CheckSquare, BarChart3, Award, UserPlus, FileText, HardDrive, Shield, Server, Globe } from "lucide-react"
 import { Loader2 } from "lucide-react"
 import React from "react"
@@ -95,6 +96,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           <main className="flex-1 overflow-y-auto p-6">{children}</main>
         </div>
       </div>
+      <Toaster />
     </SidebarProvider>
   )
 } 

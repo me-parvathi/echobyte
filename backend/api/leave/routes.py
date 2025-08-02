@@ -37,16 +37,21 @@ def calculate_leave_days(
         raise HTTPException(status_code=400, detail=str(e))
 
 # Leave Application routes
-@router.get("/applications", response_model=List[schemas.LeaveApplicationResponse])
+@router.get("/applications", response_model=schemas.PaginatedLeaveApplicationResponse)
 def get_leave_applications(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     employee_id: Optional[int] = None,
     status_code: Optional[str] = None,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    leave_type_id: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
-    """Get list of leave applications with optional filtering"""
-    return service.LeaveService.get_leave_applications(db, skip, limit, employee_id, status_code)
+    """Get list of leave applications with optional filtering and pagination"""
+    return service.LeaveService.get_leave_applications(
+        db, skip, limit, employee_id, status_code, start_date, end_date, leave_type_id
+    )
 
 @router.get("/applications/{application_id}", response_model=schemas.LeaveApplicationResponse)
 def get_leave_application(application_id: int, db: Session = Depends(get_db)):
@@ -75,6 +80,11 @@ def delete_leave_application(application_id: int, db: Session = Depends(get_db))
     """Delete a leave application"""
     service.LeaveService.delete_leave_application(db, application_id)
     return None
+
+@router.post("/applications/{application_id}/cancel", response_model=schemas.LeaveApplicationResponse)
+def cancel_leave_application(application_id: int, db: Session = Depends(get_db)):
+    """Cancel a leave application (only if it's in Draft or Submitted status)"""
+    return service.LeaveService.cancel_leave_application(db, application_id)
 
 # Leave Type routes
 @router.get("/types", response_model=List[schemas.LeaveTypeResponse])
@@ -248,4 +258,14 @@ def hr_approve_leave_application(
     db: Session = Depends(get_db)
 ):
     """HR approval for leave application (only after manager approval)"""
-    return service.LeaveService.hr_approve_leave_application(db, application_id, approval) 
+    return service.LeaveService.hr_approve_leave_application(db, application_id, approval)
+
+@router.get("/check-conflicts")
+def check_leave_conflicts(
+    start_date: date = Query(..., description="Start date of leave period"),
+    end_date: date = Query(..., description="End date of leave period"),
+    manager_id: Optional[int] = Query(None, description="Manager ID to check conflicts for (optional)"),
+    db: Session = Depends(get_db)
+):
+    """Check for leave conflicts among employees under a manager"""
+    return service.LeaveService.check_leave_conflicts(db, start_date, end_date, manager_id) 

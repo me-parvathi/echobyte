@@ -4,6 +4,7 @@ import { Loader2, Clock, LayoutDashboard, Calendar, TicketIcon, Briefcase, BookO
 import { useRouter } from "next/navigation"
 import useUserInfo from "@/hooks/use-user-info"
 import React from "react"
+import DashboardStats from "@/components/features/dashboard-stats"
 
 interface UserInfo {
   email: string
@@ -21,7 +22,10 @@ export default function DashboardHome() {
   const { userInfo, loading } = useUserInfo()
   const router = useRouter()
 
+  console.log("🏠 Dashboard page loaded:", { userInfo, loading })
+
   if (loading) {
+    console.log("⏳ Dashboard loading...")
     return (
       <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50">
         <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-600" />
@@ -29,8 +33,13 @@ export default function DashboardHome() {
     )
   }
 
-  if (!userInfo) return null
+  if (!userInfo) {
+    console.log("❌ No user info, redirecting to login")
+    router.push("/")
+    return null
+  }
 
+  console.log("✅ Dashboard rendering with user info:", userInfo)
   return <DashboardOverview userInfo={userInfo} onNavigate={(id)=>router.push(`/dashboard/${id}`)} />
 }
 
@@ -228,29 +237,8 @@ function DashboardOverview({ userInfo, onNavigate }: { userInfo: UserInfo; onNav
         </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat, index) => {
-          const Icon = stat.icon
-          return (
-            <div
-              key={index}
-              className={`border-0 shadow-lg hover:shadow-xl transition-all duration-300 bg-gradient-to-br ${stat.bgColor} ${stat.darkBgColor} backdrop-blur-sm hover:scale-105 cursor-pointer rounded-lg p-6`}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className={`p-3 bg-gradient-to-r ${stat.color} rounded-xl shadow-lg`}>
-                  <Icon className="w-6 h-6 text-white" />
-                </div>
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-300">{stat.title}</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{stat.value}</p>
-                {stat.subtitle && <p className="text-xs text-gray-500 dark:text-gray-400">{stat.subtitle}</p>}
-              </div>
-            </div>
-          )
-        })}
-      </div>
+      {/* Real-time Stats */}
+      <DashboardStats userInfo={userInfo} />
 
       {/* Quick Actions */}
       <div className="border-0 shadow-lg bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-lg">

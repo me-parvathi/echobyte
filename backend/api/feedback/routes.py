@@ -6,6 +6,30 @@ from . import schemas, service
 
 router = APIRouter()
 
+# Feedback Type routes (must come before parameterized routes)
+@router.get("/types", response_model=List[schemas.FeedbackTypeResponse])
+def get_feedback_types(db: Session = Depends(get_db)):
+    """Get list of feedback types"""
+    return service.FeedbackService.get_feedback_types(db)
+
+@router.get("/types/{type_code}", response_model=schemas.FeedbackTypeResponse)
+def get_feedback_type(type_code: str, db: Session = Depends(get_db)):
+    """Get a specific feedback type by code"""
+    feedback_type = service.FeedbackService.get_feedback_type(db, type_code)
+    if not feedback_type:
+        raise HTTPException(status_code=404, detail="Feedback type not found")
+    return feedback_type
+
+# Feedback management routes (must come before parameterized routes)
+@router.get("/unread/count")
+def get_unread_feedback_count(
+    target_manager_id: Optional[int] = None,
+    target_department_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    """Get count of unread feedback"""
+    return service.FeedbackService.get_unread_count(db, target_manager_id, target_department_id)
+
 # Feedback routes
 @router.get("/", response_model=List[schemas.EmployeeFeedbackResponse])
 def get_feedback(
@@ -20,6 +44,12 @@ def get_feedback(
     """Get list of feedback with optional filtering"""
     return service.FeedbackService.get_feedback(db, skip, limit, feedback_type_code, target_manager_id, target_department_id, is_read)
 
+@router.post("/", response_model=schemas.EmployeeFeedbackResponse, status_code=201)
+def create_feedback(feedback: schemas.EmployeeFeedbackCreate, db: Session = Depends(get_db)):
+    """Create new feedback"""
+    return service.FeedbackService.create_feedback(db, feedback)
+
+# Parameterized routes (must come last)
 @router.get("/{feedback_id}", response_model=schemas.EmployeeFeedbackResponse)
 def get_feedback_item(feedback_id: int, db: Session = Depends(get_db)):
     """Get a specific feedback by ID"""
@@ -27,11 +57,6 @@ def get_feedback_item(feedback_id: int, db: Session = Depends(get_db)):
     if not feedback:
         raise HTTPException(status_code=404, detail="Feedback not found")
     return feedback
-
-@router.post("/", response_model=schemas.EmployeeFeedbackResponse, status_code=201)
-def create_feedback(feedback: schemas.EmployeeFeedbackCreate, db: Session = Depends(get_db)):
-    """Create new feedback"""
-    return service.FeedbackService.create_feedback(db, feedback)
 
 @router.put("/{feedback_id}", response_model=schemas.EmployeeFeedbackResponse)
 def update_feedback(
@@ -48,21 +73,6 @@ def delete_feedback(feedback_id: int, db: Session = Depends(get_db)):
     service.FeedbackService.delete_feedback(db, feedback_id)
     return None
 
-# Feedback Type routes
-@router.get("/types", response_model=List[schemas.FeedbackTypeResponse])
-def get_feedback_types(db: Session = Depends(get_db)):
-    """Get list of feedback types"""
-    return service.FeedbackService.get_feedback_types(db)
-
-@router.get("/types/{type_code}", response_model=schemas.FeedbackTypeResponse)
-def get_feedback_type(type_code: str, db: Session = Depends(get_db)):
-    """Get a specific feedback type by code"""
-    feedback_type = service.FeedbackService.get_feedback_type(db, type_code)
-    if not feedback_type:
-        raise HTTPException(status_code=404, detail="Feedback type not found")
-    return feedback_type
-
-# Feedback management routes
 @router.post("/{feedback_id}/mark-read")
 def mark_feedback_as_read(
     feedback_id: int,
@@ -70,13 +80,4 @@ def mark_feedback_as_read(
     db: Session = Depends(get_db)
 ):
     """Mark feedback as read"""
-    return service.FeedbackService.mark_as_read(db, feedback_id, read_request)
-
-@router.get("/unread/count")
-def get_unread_feedback_count(
-    target_manager_id: Optional[int] = None,
-    target_department_id: Optional[int] = None,
-    db: Session = Depends(get_db)
-):
-    """Get count of unread feedback"""
-    return service.FeedbackService.get_unread_count(db, target_manager_id, target_department_id) 
+    return service.FeedbackService.mark_as_read(db, feedback_id, read_request) 

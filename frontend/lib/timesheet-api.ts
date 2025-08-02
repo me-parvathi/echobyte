@@ -48,6 +48,16 @@ export class TimesheetApiService {
     }
   }
 
+  // Get specific timesheet with details
+  static async getMyTimesheet(timesheetId: number): Promise<Timesheet> {
+    return api.get<Timesheet>(`/timesheets/my/timesheet/${timesheetId}`);
+  }
+
+  // Alternative method name for getting timesheet details
+  static async getTimesheetDetails(timesheetId: number): Promise<Timesheet> {
+    return api.get<Timesheet>(`/timesheets/my/timesheet/${timesheetId}`);
+  }
+
   // Create or update daily entry
   static async createMyDailyEntry(dailyData: DailyEntryFormData): Promise<TimesheetDetail> {
     return api.post<TimesheetDetail>('/timesheets/my/daily', dailyData);
@@ -95,5 +105,13 @@ export class TimesheetApiService {
   static async getTimesheetStatus(timesheetId: number): Promise<Timesheet['StatusCode']> {
     const timesheet = await api.get<Timesheet>(`/timesheets/my/timesheet/${timesheetId}`);
     return timesheet.StatusCode;
+  }
+
+  // Approve or reject timesheet (Manager/HR only)
+  static async approveTimesheet(
+    timesheetId: number, 
+    approval: { status: 'Approved' | 'Rejected'; approved_by_id: number; comments?: string }
+  ): Promise<Timesheet> {
+    return api.post<Timesheet>(`/timesheets/${timesheetId}/approve`, approval);
   }
 } 

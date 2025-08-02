@@ -4,52 +4,51 @@ from datetime import datetime
 
 # Employee Feedback schemas
 class EmployeeFeedbackBase(BaseModel):
-    EmployeeID: int
-    FeedbackTypeID: int
-    Subject: str
-    Content: str
-    Rating: Optional[int] = None
-    IsActive: bool = True
+    FeedbackTypeCode: str
+    Category: Optional[str] = None
+    Subject: Optional[str] = None
+    FeedbackText: str
+    TargetManagerID: Optional[int] = None
+    TargetDepartmentID: Optional[int] = None
 
 class EmployeeFeedbackCreate(EmployeeFeedbackBase):
     pass
 
 class EmployeeFeedbackUpdate(BaseModel):
-    EmployeeID: Optional[int] = None
-    FeedbackTypeID: Optional[int] = None
+    FeedbackTypeCode: Optional[str] = None
+    Category: Optional[str] = None
     Subject: Optional[str] = None
-    Content: Optional[str] = None
-    Rating: Optional[int] = None
-    IsActive: Optional[bool] = None
+    FeedbackText: Optional[str] = None
+    TargetManagerID: Optional[int] = None
+    TargetDepartmentID: Optional[int] = None
 
 class EmployeeFeedbackResponse(EmployeeFeedbackBase):
     FeedbackID: int
-    CreatedAt: datetime
-    UpdatedAt: datetime
+    FeedbackAt: datetime
+    FeedbackHash: Optional[str] = None
+    IsRead: bool
+    ReadByID: Optional[int] = None
+    ReadAt: Optional[datetime] = None
     
     class Config:
         from_attributes = True
 
 # Feedback Type schemas
 class FeedbackTypeBase(BaseModel):
-    TypeName: str
-    TypeCode: str
-    Description: Optional[str] = None
+    FeedbackTypeName: str
     IsActive: bool = True
 
 class FeedbackTypeCreate(FeedbackTypeBase):
-    pass
+    FeedbackTypeCode: str
 
 class FeedbackTypeUpdate(BaseModel):
-    TypeName: Optional[str] = None
-    TypeCode: Optional[str] = None
-    Description: Optional[str] = None
+    FeedbackTypeName: Optional[str] = None
+    FeedbackTypeCode: Optional[str] = None
     IsActive: Optional[bool] = None
 
 class FeedbackTypeResponse(FeedbackTypeBase):
-    FeedbackTypeID: int
+    FeedbackTypeCode: str
     CreatedAt: datetime
-    UpdatedAt: datetime
     
     class Config:
         from_attributes = True

@@ -75,6 +75,9 @@ export function AppSidebar({ items, userInfo }: AppSidebarProps) {
   }
 
   const getInitials = (name: string) => {
+    if (!name || typeof name !== 'string') {
+      return "U" // Default initial for unknown user
+    }
     return name
       .split(" ")
       .map((n) => n[0])

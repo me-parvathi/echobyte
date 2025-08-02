@@ -66,6 +66,15 @@ class LeaveApplicationResponse(BaseModel):
     class Config:
         from_attributes = True
 
+# Paginated response schema - moved after LeaveApplicationResponse is defined
+class PaginatedLeaveApplicationResponse(BaseModel):
+    items: List[LeaveApplicationResponse]
+    total_count: int
+    page: int
+    size: int
+    has_next: bool
+    has_previous: bool
+
 # Leave Type schemas
 class LeaveTypeBase(BaseModel):
     LeaveTypeName: str

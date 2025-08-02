@@ -1,23 +1,25 @@
+import { AlertCircle } from "lucide-react"
+import { Button } from "./button"
+
 interface ErrorMessageProps {
-    error: Error;
-    onRetry?: () => void;
-  }
-  
-  export function ErrorMessage({ error, onRetry }: ErrorMessageProps) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <div className="text-center">
-          <div className="text-red-600 font-medium mb-2">Something went wrong</div>
-          <div className="text-gray-600 text-sm mb-4">{error.message}</div>
-          {onRetry && (
-            <button
-              onClick={onRetry}
-              className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700"
-            >
-              Try Again
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  }
+  error: Error | string
+  onRetry?: () => void
+  className?: string
+}
+
+export function ErrorMessage({ error, onRetry, className = "" }: ErrorMessageProps) {
+  const errorMessage = typeof error === 'string' ? error : error.message
+
+  return (
+    <div className={`flex flex-col items-center justify-center p-8 text-center ${className}`}>
+      <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
+      <h3 className="text-lg font-medium text-gray-900 mb-2">Something went wrong</h3>
+      <p className="text-gray-600 mb-4 max-w-md">{errorMessage}</p>
+      {onRetry && (
+        <Button onClick={onRetry} variant="outline">
+          Try Again
+        </Button>
+      )}
+    </div>
+  )
+}

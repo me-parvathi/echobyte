@@ -81,6 +81,8 @@ class Employee(Base):
     employment_type = relationship("EmploymentType")
     work_mode = relationship("WorkMode")
     designation = relationship("Designation")
+    manager = relationship("Employee", foreign_keys=[ManagerID], remote_side=[EmployeeID])
+    subordinates = relationship("Employee", foreign_keys=[ManagerID])
     emergency_contacts = relationship("EmergencyContact", back_populates="employee")
     user = relationship("User", foreign_keys=[UserID])
     comments = relationship("Comment", back_populates="commenter")
