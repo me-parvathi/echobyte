@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """
-generate_fake_echobyte_data.py
+generate_data.py
 ────────────────────────────────────────────────────────────────────────────
 Creates realistic, referential-integrity-safe CSVs for the July-2025
 *echobyte* schema (see ddl.sql) and drops them in ./csv_out/.
 
 Volumetrics (CFG defaults)
 •  4  locations     •  ~14 departments (2-tier)   •  25-40 teams
-•  800 employees    •  5 % terminated / 3 % inactive
+•  870 employees    •  5 % terminated / 3 % inactive
 •  8 years of leave balances (1 row / emp / type / year)
-•  1 year weekly timesheets with daily details for all active staff
-•  8 000 IT assets with realistic status / contracts / assignments
+•  60 weeks of timesheets with daily details for all active staff
+•  500 IT assets with realistic status / contracts / assignments
+•  200 IT tickets with realistic workflows and comments
 All numbers are tweakable via CFG.
 
 Faker seed = 42 → deterministic output.
@@ -603,7 +604,17 @@ TICKET_TEMPLATES = {
 def generate_chronological_dates(base_date: dt.date, num_dates: int, min_days_between: int = 1) -> list[dt.datetime]:
     """
     Generate a list of chronologically ordered datetime objects starting from base_date.
-    Each date is at least min_days_between days after the previous one.
+    
+    Creates realistic timestamps for business activities with proper spacing
+    between dates. Each date is at least min_days_between days after the previous one.
+    
+    Args:
+        base_date: Starting date for the sequence
+        num_dates: Number of dates to generate
+        min_days_between: Minimum days between consecutive dates
+        
+    Returns:
+        List of chronologically ordered datetime objects
     """
     dates = []
     current_date = dt.datetime.combine(base_date, dt.time(9, 0))  # Start at 9 AM
@@ -620,7 +631,12 @@ def generate_chronological_dates(base_date: dt.date, num_dates: int, min_days_be
 def generate_employee_dates() -> dict:
     """
     Generate realistic employee dates ensuring proper chronological order.
-    Returns a dict with hire_date, termination_date, created_at, updated_at
+    
+    Creates hire date, termination date (if applicable), and audit timestamps
+    that follow realistic employment patterns. 5% of employees are terminated.
+    
+    Returns:
+        Dictionary with hire_date, termination_date, created_at, updated_at
     """
     # Hire date: 1-10 years ago, not in future
     years_back = random.randint(1, 10)
@@ -653,7 +669,18 @@ def generate_employee_dates() -> dict:
 def generate_leave_application_dates(hire_date: dt.date, termination_date: dt.date = None) -> dict:
     """
     Generate leave application dates that are between hire_date and termination_date (if exists).
-    Returns a dict with start_date, end_date, and all approval timestamps in proper order.
+    
+    Creates realistic leave application timelines with proper approval workflow
+    timestamps. Ensures leave dates are within employment period and employee
+    has been employed long enough to take leave.
+    
+    Args:
+        hire_date: Employee hire date
+        termination_date: Employee termination date (optional)
+        
+    Returns:
+        Dictionary with start_date, end_date, and all approval timestamps in proper order,
+        or None if employee hasn't been here long enough for leave
     """
     if termination_date is None:
         termination_date = dt.date.today()
@@ -696,6 +723,16 @@ def generate_leave_application_dates(hire_date: dt.date, termination_date: dt.da
 def safe_date_range(start_date: dt.datetime, end_date: dt.datetime = None) -> int:
     """
     Safely calculate the number of days between two dates, ensuring positive range.
+    
+    Handles edge cases where dates might be in wrong order or too close together.
+    Returns a minimum of 1 day to prevent division by zero errors.
+    
+    Args:
+        start_date: Start datetime
+        end_date: End datetime (defaults to now)
+        
+    Returns:
+        Number of days between dates, minimum 1
     """
     if end_date is None:
         end_date = dt.datetime.now()
@@ -705,7 +742,17 @@ def safe_date_range(start_date: dt.datetime, end_date: dt.datetime = None) -> in
 def generate_timesheet_dates(hire_date: dt.date, termination_date: dt.date = None) -> dict:
     """
     Generate timesheet dates that are between hire_date and termination_date (if exists).
-    Returns a dict with week_start, week_end, created_at, submitted_at, approved_at, updated_at
+    
+    Creates realistic timesheet periods that fall within employment dates.
+    Ensures timesheets start after onboarding period and end before termination.
+    
+    Args:
+        hire_date: Employee hire date
+        termination_date: Employee termination date (optional)
+        
+    Returns:
+        Dictionary with week_start, week_end, created_at, submitted_at, approved_at, updated_at,
+        or None if no valid timesheet period exists
     """
     if termination_date is None:
         termination_date = dt.date.today()
@@ -745,6 +792,15 @@ def generate_timesheet_dates(hire_date: dt.date, termination_date: dt.date = Non
 # Helpers
 # ────────────────────────────────
 def weighted_choice(weight_map: dict[str, float]) -> str:
+    """
+    Choose a key from a dictionary based on weighted probabilities.
+    
+    Args:
+        weight_map: Dictionary mapping keys to their probability weights
+        
+    Returns:
+        Randomly selected key based on the provided weights
+    """
     r, acc = random.random(), 0.0
     for key, w in weight_map.items():
         acc += w
@@ -753,6 +809,16 @@ def weighted_choice(weight_map: dict[str, float]) -> str:
     return next(reversed(weight_map))
 
 def wr(csv_name: str, rows: list[dict]) -> None:
+    """
+    Write data to CSV file in the output directory.
+    
+    Converts a list of dictionaries to a pandas DataFrame and saves it as CSV.
+    Only writes if rows are not empty.
+    
+    Args:
+        csv_name: Name of the CSV file (without extension)
+        rows: List of dictionaries to write
+    """
     if not rows:
         return
     pd.DataFrame(rows).to_csv(
@@ -766,7 +832,13 @@ def hash_password(password: str) -> str:
     """Hash password using SHA-256"""
     return hashlib.sha256(password.encode()).hexdigest()
 
-def today() -> dt.date:            # convenience
+def today() -> dt.date:
+    """
+    Get today's date as a convenience function.
+    
+    Returns:
+        Current date as datetime.date object
+    """
     return dt.date.today()
 
 # ────────────────────────────────
@@ -774,11 +846,31 @@ def today() -> dt.date:            # convenience
 # ────────────────────────────────
 
 def generate_ticket_number(ticket_id: int, year: int) -> str:
-    """Generate ticket number in format TKT-YYYY-XXXX"""
+    """
+    Generate a ticket number in the format TKT-YYYY-XXXX.
+    
+    Args:
+        ticket_id: Sequential ticket ID
+        year: Year the ticket was created
+        
+    Returns:
+        Formatted ticket number string
+    """
     return f"TKT-{year}-{ticket_id:04d}"
 
 def get_ticket_subject(category_name: str) -> str:
-    """Generate realistic subject based on category"""
+    """
+    Generate realistic ticket subject based on category.
+    
+    Uses predefined templates for common ticket categories to create
+    realistic subject lines that match the category type.
+    
+    Args:
+        category_name: Name of the ticket category
+        
+    Returns:
+        Realistic ticket subject string
+    """
     if category_name in TICKET_TEMPLATES:
         template = random.choice(TICKET_TEMPLATES[category_name]["subjects"])
         fields = TICKET_TEMPLATES[category_name]["faker_fields"]
@@ -794,7 +886,20 @@ def get_ticket_subject(category_name: str) -> str:
         return fake.sentence(nb_words=6, variable_nb_words=True)
 
 def get_ticket_description(category_name: str, priority: str) -> str:
-    """Generate detailed description based on category and priority"""
+    """
+    Generate detailed ticket description based on category and priority.
+    
+    Uses predefined templates for common ticket categories to create
+    realistic descriptions with technical details. Adds urgency notes
+    for high-priority tickets.
+    
+    Args:
+        category_name: Name of the ticket category
+        priority: Priority level of the ticket
+        
+    Returns:
+        Detailed ticket description string
+    """
     if category_name in TICKET_TEMPLATES:
         template = random.choice(TICKET_TEMPLATES[category_name]["descriptions"])
         fields = TICKET_TEMPLATES[category_name]["faker_fields"]
@@ -814,7 +919,19 @@ def get_ticket_description(category_name: str, priority: str) -> str:
         return fake.paragraph(nb_sentences=3)
 
 def calculate_due_date(priority_code: str, opened_at: dt.datetime) -> dt.datetime:
-    """Calculate due date based on priority SLA"""
+    """
+    Calculate ticket due date based on priority SLA.
+    
+    Uses predefined SLA hours for each priority level and adjusts
+    for business hours (9 AM - 5 PM) to ensure realistic due dates.
+    
+    Args:
+        priority_code: Priority level code (LOW, MED, HIGH, CRIT, URG)
+        opened_at: Timestamp when ticket was opened
+        
+    Returns:
+        Calculated due date timestamp
+    """
     sla_hours = {
         "LOW": 72,    # 3 business days
         "MED": 24,    # 1 business day
@@ -836,7 +953,19 @@ def calculate_due_date(priority_code: str, opened_at: dt.datetime) -> dt.datetim
     return due_date
 
 def determine_escalation_needed(priority: str, time_open: int) -> bool:
-    """Determine if ticket should be escalated based on business rules"""
+    """
+    Determine if ticket should be escalated based on business rules.
+    
+    Uses priority-specific escalation thresholds to determine if a ticket
+    has been open too long and needs escalation to management.
+    
+    Args:
+        priority: Priority level of the ticket
+        time_open: Hours the ticket has been open
+        
+    Returns:
+        True if ticket should be escalated, False otherwise
+    """
     if priority in ["CRIT", "URG"]:
         return time_open > 2  # Escalate after 2 hours for critical tickets
     elif priority == "HIGH":
@@ -847,7 +976,18 @@ def determine_escalation_needed(priority: str, time_open: int) -> bool:
         return time_open > 168  # Escalate after 1 week for low priority
 
 def get_it_staff(employees: list) -> list:
-    """Get list of IT staff who can be assigned to tickets"""
+    """
+    Get list of IT staff who can be assigned to tickets.
+    
+    For simplicity, uses employees with ManagerID (managers) as IT staff.
+    In a real scenario, you'd have specific IT roles/designations.
+    
+    Args:
+        employees: List of employee dictionaries
+        
+    Returns:
+        List of IT staff employee dictionaries
+    """
     # For simplicity, use employees with ManagerID (managers) as IT staff
     # In a real scenario, you'd have specific IT roles/designations
     it_staff = [emp for emp in employees if emp.get("ManagerID") is not None]
@@ -859,7 +999,19 @@ def get_it_staff(employees: list) -> list:
     return it_staff
 
 def generate_business_hours_timestamp(start_date: dt.date, end_date: dt.date) -> dt.datetime:
-    """Generate timestamp during business hours (9 AM - 5 PM)"""
+    """
+    Generate timestamp during business hours (9 AM - 5 PM).
+    
+    Creates realistic timestamps that fall within normal business hours
+    for ticket creation and other business activities.
+    
+    Args:
+        start_date: Start date for the range
+        end_date: End date for the range
+        
+    Returns:
+        Random datetime within business hours between start and end dates
+    """
     # Random date between start and end
     days_between = (end_date - start_date).days
     random_days = random.randint(0, days_between)
@@ -872,7 +1024,19 @@ def generate_business_hours_timestamp(start_date: dt.date, end_date: dt.date) ->
     return dt.datetime.combine(random_date, dt.time(hour, minute))
 
 def generate_ticket_status_progression(opened_at: dt.datetime, priority: str) -> list:
-    """Generate realistic status progression for a ticket"""
+    """
+    Generate realistic status progression for a ticket.
+    
+    Creates a chronological sequence of status changes that follow
+    typical IT support workflows. Timing is adjusted based on priority level.
+    
+    Args:
+        opened_at: Timestamp when ticket was opened
+        priority: Priority level affecting resolution timing
+        
+    Returns:
+        List of status dictionaries with timestamps and activity details
+    """
     statuses = []
     current_time = opened_at
     
@@ -964,6 +1128,18 @@ assert set(CFG["asset_status_mix"]) == set(ASSET_STATUS_CODES)
 # 2. Core structure
 # ────────────────────────────────
 def gen_locations(n: int):
+    """
+    Generate location data for the organization.
+    
+    Creates n locations with realistic addresses, phone numbers, and timestamps.
+    Each location represents an office or facility of the company.
+    
+    Args:
+        n: Number of locations to generate
+        
+    Returns:
+        List of location dictionaries with all required fields
+    """
     rows = []
     for lid in range(1, n + 1):
         city = fake.city()
@@ -990,6 +1166,19 @@ def gen_locations(n: int):
     return rows
 
 def gen_departments(structure, locations):
+    """
+    Generate department hierarchy data.
+    
+    Creates a two-tier department structure with parent departments and their children.
+    Each department is assigned to a random location and has proper timestamps.
+    
+    Args:
+        structure: List of tuples (parent_dept_name, [child_dept_names])
+        locations: List of location dictionaries for assignment
+        
+    Returns:
+        List of department dictionaries with hierarchical relationships
+    """
     rows, did = [], 1
     for root, children in structure:
         parent_id = did
@@ -1029,6 +1218,19 @@ def gen_departments(structure, locations):
     return rows
 
 def gen_teams(departments, rng):
+    """
+    Generate team data for each department.
+    
+    Creates teams within each department with realistic team names and codes.
+    Teams are created after their parent departments with proper timestamps.
+    
+    Args:
+        departments: List of department dictionaries
+        rng: Tuple (min_teams, max_teams) per department
+        
+    Returns:
+        List of team dictionaries with department assignments
+    """
     rows, tid = [], 1
     for d in departments:
         for _ in range(random.randint(*rng)):
@@ -1056,7 +1258,20 @@ def gen_teams(departments, rng):
 # 3. Employees & security
 # ────────────────────────────────
 def gen_users(employees):
-    """Generate Users table data based on employee information"""
+    """
+    Generate Users table data based on employee information.
+    
+    Creates user accounts for each employee with realistic usernames,
+    email addresses, and password hashes. Also generates a separate
+    password file for testing purposes.
+    
+    Args:
+        employees: List of employee dictionaries
+        
+    Returns:
+        Tuple of (users_list, password_data_list) where password_data contains
+        both real and hashed passwords for testing
+    """
     rows = []
     password_data = []
     
@@ -1129,10 +1344,34 @@ def gen_users(employees):
     return rows, password_data
 
 def gen_designations():
+    """
+    Return designation IDs that match the DDL seed data.
+    
+    Designations are already seeded in the database schema.
+    Returns a list of designation IDs (1-10) for employee assignment.
+    
+    Returns:
+        List of designation IDs (1-10)
+    """
     # designation rows already seeded in DDL; grab their IDs dynamically 1..10
     return list(range(1, 11))
 
 def gen_employees(teams, locations, n):
+    """
+    Generate employee data with realistic organizational structure.
+    
+    Creates employees with proper team assignments, manager relationships,
+    and realistic personal information. Ensures one manager per team and
+    assigns HR representatives based on configuration.
+    
+    Args:
+        teams: List of team dictionaries
+        locations: List of location dictionaries for assignment
+        n: Total number of employees to generate
+        
+    Returns:
+        Tuple of (employees_list, managers_dict, hr_representatives_list)
+    """
     start_time = time.time()
     print(f"Generating {n} employees...")
     rows, eid = [], 1
@@ -1268,6 +1507,18 @@ def gen_employees(teams, locations, n):
     return rows, managers, hr_representatives
 
 def gen_emergency_contacts(employees):
+    """
+    Generate emergency contact information for employees.
+    
+    Creates emergency contacts for 90% of employees with realistic relationships,
+    contact information, and proper timestamps relative to employee creation.
+    
+    Args:
+        employees: List of employee dictionaries
+        
+    Returns:
+        List of emergency contact dictionaries
+    """
     rows, cid = [], 1
     for emp in employees:
         if random.random() < 0.9:
@@ -1295,7 +1546,23 @@ def gen_emergency_contacts(employees):
     return rows
 
 def gen_roles_and_emp_roles(employees, managers, hr_representatives):
-    # Role IDs seeded in DDL: 1..11   (Employee, Manager, HR, Admin, CEO, ...)
+    """
+    Generate employee role assignments based on organizational hierarchy.
+    
+    Assigns roles to employees based on their position:
+    - Team managers get Manager role (RoleID 2)
+    - HR representatives get HR role (RoleID 3)
+    - All others get Employee role (RoleID 1)
+    
+    Args:
+        employees: List of employee dictionaries
+        managers: Dictionary mapping team_id to manager_employee_id
+        hr_representatives: List of HR representative employee dictionaries
+        
+    Returns:
+        Tuple of (roles_list, employee_roles_list) - roles_list is empty as roles are seeded in DDL
+    """
+    # Role IDs seeded in DDL: 1=Employee, 2=Manager, 3=HR, 4=Admin, 5=CEO, etc.
     rows_roles = []        # not needed – already seeded
     rows_emp_roles, erid = [], 1
     
@@ -1331,6 +1598,15 @@ def gen_roles_and_emp_roles(employees, managers, hr_representatives):
 # 4. Leave management
 # ────────────────────────────────
 def gen_leave_types():
+    """
+    Return leave type definitions that match the DDL seed data.
+    
+    These leave types are already seeded in the database schema.
+    Returns the mapping of leave type IDs to their codes and default days.
+    
+    Returns:
+        List of tuples (LeaveTypeID, LeaveCode, DefaultDaysPerYear)
+    """
     # Use those seeded, but map code → ID (Identity starts at 1)
     return [
         (1, "VAC", 20),
@@ -1341,6 +1617,19 @@ def gen_leave_types():
     ]
 
 def gen_leave_balances(employees):
+    """
+    Generate leave balance records for employees.
+    
+    Creates leave balance entries for each employee and leave type combination
+    for the past 8 years (or since hire date if more recent). Includes realistic
+    usage patterns with some leave already taken.
+    
+    Args:
+        employees: List of employee dictionaries
+        
+    Returns:
+        List of leave balance dictionaries
+    """
     rows, bid = [], 1
     types = gen_leave_types()
     years_back = CFG["leave_type_years_back"]
@@ -1566,6 +1855,20 @@ def gen_timesheets_and_details(employees):
 # ────────────────────────────────
 LAPTOP_MODELS = ["Dell Latitude 7440", "MacBook Pro 14", "M3", "Lenovo ThinkPad X1"]
 def gen_assets(asset_types, locations):
+    """
+    Generate IT asset inventory data.
+    
+    Creates realistic IT assets with proper categorization, status distribution,
+    warranty information, and contract details. Assets include laptops, monitors,
+    peripherals, and mobile devices.
+    
+    Args:
+        asset_types: List of asset type dictionaries from DDL constants
+        locations: List of location dictionaries for asset assignment
+        
+    Returns:
+        List of asset dictionaries with all inventory details
+    """
     rows, aid = [], 1
     for _ in range(CFG["n_assets"]):
         status = weighted_choice(CFG["asset_status_mix"])
@@ -1603,6 +1906,20 @@ def gen_assets(asset_types, locations):
         aid += 1
     return rows
 def gen_asset_assignments(assets, employees):
+    """
+    Generate asset assignment records linking assets to employees.
+    
+    Assigns eligible assets (In-Stock, Available, Assigned) to active employees
+    with realistic assignment dates, return dates, and condition tracking.
+    Updates asset status to "Assigned" when assigned.
+    
+    Args:
+        assets: List of asset dictionaries
+        employees: List of employee dictionaries
+        
+    Returns:
+        List of asset assignment dictionaries
+    """
     start_time = time.time()
     print(f"Generating asset assignments...")
     rows, asid = [], 1
@@ -1678,6 +1995,20 @@ def gen_asset_assignments(assets, employees):
 # 7. Feedback
 # ────────────────────────────────
 def gen_feedbacks(employees, teams):
+    """
+    Generate employee feedback data.
+    
+    Creates realistic feedback entries with various types (General, Manager, Department)
+    and categories (Process, Culture, Workload). Includes proper timestamps and
+    target assignments for managers and departments.
+    
+    Args:
+        employees: List of employee dictionaries
+        teams: List of team dictionaries for department mapping
+        
+    Returns:
+        List of feedback dictionaries
+    """
     rows, fid = [], 1
 
     # Build TeamID → DepartmentID map
@@ -1853,7 +2184,20 @@ def gen_tickets(employees, assets, categories):
     return rows
 
 def gen_ticket_activities(tickets, employees):
-    """Generate ticket activities with realistic timeline"""
+    """
+    Generate ticket activity logs with realistic timeline.
+    
+    Creates activity records for each ticket status change and additional
+    activities like comments and updates. Activities follow the ticket's
+    status progression with proper timestamps and performer assignments.
+    
+    Args:
+        tickets: List of ticket dictionaries
+        employees: List of employee dictionaries for performer assignment
+        
+    Returns:
+        List of ticket activity dictionaries
+    """
     rows, aid = [], 1
     
     for ticket in tickets:
@@ -1918,7 +2262,20 @@ def gen_ticket_activities(tickets, employees):
     return rows
 
 def gen_ticket_attachments(tickets, employees):
-    """Generate ticket attachments with realistic file information"""
+    """
+    Generate ticket attachment records with realistic file information.
+    
+    Creates attachment records for 25% of tickets with realistic file names,
+    sizes, and MIME types. Includes screenshots, error logs, documents,
+    and other common IT support attachments.
+    
+    Args:
+        tickets: List of ticket dictionaries
+        employees: List of employee dictionaries for uploader assignment
+        
+    Returns:
+        List of ticket attachment dictionaries
+    """
     rows, attid = [], 1
     
     attachment_types = [
@@ -1984,12 +2341,34 @@ def gen_ticket_attachments(tickets, employees):
 # Note: TicketCategories are already populated in the DDL, so no need to generate them here
 # The DDL contains all the ticket categories and subcategories that would be generated by this function
 
+# Note: The following helper functions are defined but not directly called in main():
+# - determine_escalation_needed(): Business logic for escalation decisions (used in ticket generation logic)
+# - generate_business_hours_timestamp(): Helper for business hours timestamps (used in ticket generation)
+# These functions are used indirectly through the ticket generation process.
+
 
 # ────────────────────────────────
 # COMMENT GENERATION
 # ────────────────────────────────
 def gen_comments(leave_applications, tickets, employees, managers, hr_reps, it_staff):
-    """Generate realistic comments for LeaveApplications and Tickets"""
+    """
+    Generate realistic comments for LeaveApplications and Tickets.
+    
+    Creates chronological comment threads for both leave applications (20% of apps)
+    and tickets (100% of tickets). Comments follow realistic conversation patterns
+    with proper role-based templates and timestamps.
+    
+    Args:
+        leave_applications: List of leave application dictionaries
+        tickets: List of ticket dictionaries
+        employees: List of employee dictionaries
+        managers: Dictionary mapping team_id to manager_employee_id
+        hr_reps: List of HR representative employee dictionaries
+        it_staff: List of IT staff employee dictionaries
+        
+    Returns:
+        List of comment dictionaries with proper entity relationships
+    """
     start_time = time.time()
     print(f"Generating comments for {len(leave_applications)} leave applications and {len(tickets)} tickets...")
     rows, cid = [], 1
@@ -2267,6 +2646,12 @@ def gen_comments(leave_applications, tickets, employees, managers, hr_reps, it_s
 # MAIN
 # ────────────────────────────────
 def main():
+    """
+    Main function that orchestrates the entire data generation process.
+    
+    Generates all organizational data in the correct order to maintain
+    referential integrity. Creates CSV files for all tables in the schema.
+    """
     total_start_time = time.time()
     print("Generating fake echobyte data …")
 

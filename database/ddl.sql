@@ -160,6 +160,7 @@ CREATE TABLE dbo.Employees (
     TeamID              INT            NOT NULL,
     LocationID          INT            NOT NULL,
     ManagerID           INT            NULL,
+    HREmployeeID        INT            NOT NULL,  -- NEW COLUMN: Assigned HR representative
     DesignationID       INT            NOT NULL,
     EmploymentTypeCode  NVARCHAR(20)   NOT NULL,
     WorkModeCode        NVARCHAR(20)   NOT NULL,
@@ -182,6 +183,11 @@ CREATE TABLE dbo.Employees (
         ON DELETE NO ACTION
         ON UPDATE NO ACTION,
 
+    CONSTRAINT FK_Employees_HR
+        FOREIGN KEY (HREmployeeID) REFERENCES dbo.Employees(EmployeeID)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION,
+
     CONSTRAINT FK_Employees_Genders
         FOREIGN KEY (GenderCode)   REFERENCES dbo.Genders(GenderCode),
 
@@ -192,8 +198,10 @@ CREATE TABLE dbo.Employees (
         FOREIGN KEY (WorkModeCode) REFERENCES dbo.WorkModes(WorkModeCode),
 
     CONSTRAINT FK_Employees_Designations
-        FOREIGN KEY (DesignationID) REFERENCES dbo.Designations(DesignationID)
+        FOREIGN KEY (DesignationID) REFERENCES dbo.Designations(DesignationID),
+
 );
+
 GO
 
 /* Now we can link TeamLeadEmployeeID */
@@ -659,7 +667,11 @@ INSERT INTO dbo.Designations (DesignationName) VALUES
  ('Senior Software Engineer'), ('Staff Engineer'),
  ('Principal Engineer'), ('QA Engineer'),
  ('Senior QA Engineer'), ('DevOps Engineer'),
- ('UX Designer'), ('Product Manager');
+ ('UX Designer'), ('Product Manager'),
+ ('CEO'), ('Senior HR Executive '), ('HR Executive'),
+('IT Support Specialist'),
+('Senior IT Support Specialist'),
+('IT Systems Administrator');
 GO
 
 INSERT INTO dbo.Locations (LocationName, Address1, Address2, City, State, Country, PostalCode, Phone, TimeZone)
@@ -1214,6 +1226,7 @@ ALTER TABLE dbo.Projects
     ADD CONSTRAINT FK_Projects_Status
         FOREIGN KEY (StatusCode) REFERENCES dbo.ProjectStatuses(ProjectStatusCode);
 
+GO
 
 -- simple NOT NULL/NULL pattern is often “good enough”, but if you want enforcement:
 CREATE OR ALTER TRIGGER tr_Projects_TeamDept
@@ -1273,3 +1286,4 @@ ALTER TABLE dbo.TimesheetDetails
         FOREIGN KEY (ProjectID) REFERENCES dbo.Projects(ProjectID);
 
 -- If you want to keep ProjectCode for legacy imports, keep the column but mark one of the two as authoritative.
+
