@@ -35,25 +35,17 @@ class Timesheet(Base):
     
     # Check constraints
     __table_args__ = (
-        CheckConstraint('WeekEndDate >= WeekStartDate', name='CHK_Timesheets_Dates'),
+        CheckConstraint('HoursWorked BETWEEN 0 AND 24', name='CHK_TimesheetDetails_Hours'),
     )
 
-class TimesheetDetail(Base):
-    __tablename__ = "TimesheetDetails"
-    
-    DetailID = Column(Integer, primary_key=True, autoincrement=True)
-    TimesheetID = Column(Integer, ForeignKey("Timesheets.TimesheetID"), nullable=False)
-    WorkDate = Column(Date, nullable=False)
-    ProjectCode = Column(String(50))
-    TaskDescription = Column(String(200))
-    HoursWorked = Column(DECIMAL(4,2), nullable=False)
-    IsOvertime = Column(Boolean, nullable=False, default=False)
+class EmployeeOvertimePTO(Base):
+    __tablename__ = "EmployeeOvertimePTO"
+
+    OvertimePTOID = Column(Integer, primary_key=True, autoincrement=True)
+    OvertimeHours = Column(DECIMAL(6,2), nullable=False, default=0)
+    PTOGranted = Column(Integer, nullable=False, default=0)
+    LastCalculated = Column(DateTime, nullable=False, server_default=func.getutcdate())
     CreatedAt = Column(DateTime, nullable=False, server_default=func.getutcdate())
-    
-    # Relationships
-    timesheet = relationship("Timesheet", back_populates="details")
-    
-    # Check constraints
-    __table_args__ = (
-        CheckConstraint('HoursWorked BETWEEN 0 AND 24', name='CHK_TimesheetDetails_Hours'),
-    ) 
+    UpdatedAt = Column(DateTime, nullable=False, server_default=func.getutcdate(), onupdate=func.getutcdate())
+
+    employee = relationship("Employee", foreign_keys=[EmployeeID])

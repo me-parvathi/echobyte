@@ -8,30 +8,7 @@ from . import schemas, service
 router = APIRouter()
 
 # Timesheet API Endpoints
-# 
-# Creation Endpoints:
-# - POST /weekly: Create complete weekly timesheet with all details (bulk operation)
-# - POST /daily: Create/update individual daily entry (smart method, auto-creates timesheet)
-#
-# Retrieval Endpoints:
-# - GET /: List timesheets with filtering
-# - GET /{timesheet_id}: Get specific timesheet
-# - GET /employee/{employee_id}/week/{week_start_date}: Get employee's weekly timesheet
-# - GET /employee/{employee_id}/daily/{work_date}: Get daily entry
-# - GET /{timesheet_id}/details: Get timesheet details
-# - GET /details/{detail_id}: Get specific detail
-#
-# Update/Delete Endpoints:
-# - PUT /{timesheet_id}: Update timesheet
-# - DELETE /{timesheet_id}: Delete timesheet
-# - PUT /details/{detail_id}: Update detail
-# - DELETE /details/{detail_id}: Delete detail
-#
-# Workflow Endpoints:
-# - POST /{timesheet_id}/submit: Submit timesheet for approval
-# - POST /{timesheet_id}/approve: Approve/reject timesheet
 
-# Timesheet routes
 @router.get("/", response_model=schemas.TimesheetListResponse)
 def get_timesheets(
     skip: int = Query(0, ge=0),
@@ -75,8 +52,6 @@ def get_daily_entry(
         raise HTTPException(status_code=404, detail="Daily entry not found")
     return detail
 
-
-
 @router.post("/weekly", response_model=schemas.TimesheetResponse, status_code=201)
 def create_weekly_timesheet(weekly_data: schemas.WeeklyTimesheetCreate, db: Session = Depends(get_db)):
     """
@@ -92,6 +67,7 @@ def create_daily_entry(daily_data: schemas.DailyEntryCreate, db: Session = Depen
     Automatically creates timesheet if needed and handles updates.
     Use this for individual daily time entries.
     """
+    # Ensure EmployeeID is passed from the request and used in the service
     return service.TimesheetService.create_or_update_daily_entry(db, daily_data)
 
 @router.put("/{timesheet_id}", response_model=schemas.TimesheetResponse)
@@ -109,7 +85,6 @@ def delete_timesheet(timesheet_id: int, db: Session = Depends(get_db)):
     service.TimesheetService.delete_timesheet(db, timesheet_id)
     return None
 
-# Timesheet Detail routes
 @router.get("/{timesheet_id}/details", response_model=schemas.TimesheetDetailListResponse)
 def get_timesheet_details(
     timesheet_id: int, 
@@ -128,8 +103,6 @@ def get_timesheet_detail(detail_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Timesheet detail not found")
     return detail
 
-
-
 @router.put("/details/{detail_id}", response_model=schemas.TimesheetDetailResponse)
 def update_timesheet_detail(
     detail_id: int, 
@@ -137,6 +110,7 @@ def update_timesheet_detail(
     db: Session = Depends(get_db)
 ):
     """Update an existing timesheet detail"""
+    # Ensure EmployeeID can be updated if provided
     return service.TimesheetService.update_timesheet_detail(db, detail_id, detail_update)
 
 @router.delete("/details/{detail_id}", status_code=204)
@@ -145,7 +119,6 @@ def delete_timesheet_detail(detail_id: int, db: Session = Depends(get_db)):
     service.TimesheetService.delete_timesheet_detail(db, detail_id)
     return None
 
-# Approval routes
 @router.post("/{timesheet_id}/submit")
 def submit_timesheet(timesheet_id: int, db: Session = Depends(get_db)):
     """Submit a timesheet for approval"""
@@ -160,7 +133,6 @@ def approve_timesheet(
     """Approve or reject a timesheet"""
     return service.TimesheetService.approve_timesheet(db, timesheet_id, approval)
 
-# NEW: Batched data endpoint for better performance
 @router.get("/employee/{employee_id}/batch", response_model=schemas.TimesheetBatchResponse)
 def get_employee_timesheet_batch(
     employee_id: int,
@@ -174,9 +146,7 @@ def get_employee_timesheet_batch(
     - Current week timesheet with details
     - Recent timesheet history
     - Employee profile (basic info)
-    
-    This endpoint reduces multiple API calls to a single request.
     """
     return service.TimesheetService.get_employee_timesheet_batch(
         db, employee_id, week_start_date, include_history, history_limit
-    ) 
+    )

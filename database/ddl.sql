@@ -321,6 +321,7 @@ CREATE TABLE dbo.LeaveApplications (
     CONSTRAINT CHK_LeaveApplications_Dates CHECK (EndDate >= StartDate)
 );
 
+
 /* ============================================================
    6.  Timesheets
    ============================================================ */
@@ -362,6 +363,17 @@ CREATE TABLE dbo.TimesheetDetails (
     CONSTRAINT UQ_TimesheetDetails_UniqueDate UNIQUE (TimesheetID, WorkDate)
 );
 
+CREATE TABLE dbo.EmployeeOvertimePTO (
+    OvertimePTOID   INT            IDENTITY(1,1) PRIMARY KEY,
+    EmployeeID      INT            NOT NULL,
+    OvertimeHours   DECIMAL(6,2)   NOT NULL DEFAULT (0), -- Total overtime hours counted
+    PTOGranted      INT            NOT NULL DEFAULT (0), -- PTO days granted so far
+    LastCalculated  DATETIME2(3)   NOT NULL CONSTRAINT DF_OvertimePTO_LastCalc DEFAULT SYSUTCDATETIME(),
+    CreatedAt       DATETIME2(3)   NOT NULL CONSTRAINT DF_OvertimePTO_Created DEFAULT SYSUTCDATETIME(),
+    UpdatedAt       DATETIME2(3)   NOT NULL CONSTRAINT DF_OvertimePTO_Updated DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT FK_OvertimePTO_Employee FOREIGN KEY (EmployeeID) REFERENCES dbo.Employees(EmployeeID)
+);
+GO
 /* ============================================================
    7.  Feedback
    ============================================================ */

@@ -1,0 +1,11 @@
+from reportlab.pdfgen import canvas
+from datetime import date
+
+def create_offer_letter(employee_data, output_path):
+    c = canvas.Canvas(output_path)
+    c.drawString(100, 750, f"OFFER LETTER")
+    c.drawString(100, 730, f"Date: {date.today().strftime('%B %d, %Y')}")
+    c.drawString(100, 710, f"To: {employee_data['full_name']}")
+    c.drawString(100, 690, f"Position: {employee_data['position']}")
+    c.drawString(100, 670, f"Salary: ${employee_data['salary']: ,.2f}")
+    c.save()
