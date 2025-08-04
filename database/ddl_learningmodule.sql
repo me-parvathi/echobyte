@@ -198,3 +198,16 @@ CREATE TABLE dbo.QuizResponseScores (
         REFERENCES dbo.QuizQuestions(QuestionID)
 );
 GO
+
+
+-- Add to BadgeDefinitions table
+ALTER TABLE dbo.BadgeDefinitions 
+ADD CourseID INT NULL,
+    CONSTRAINT FK_BadgeDefinitions_Course 
+    FOREIGN KEY (CourseID) REFERENCES dbo.Courses(CourseID);
+
+-- Add to BadgeDefinitions table  
+ALTER TABLE dbo.BadgeDefinitions 
+ADD QuizID INT NULL,
+    CONSTRAINT FK_BadgeDefinitions_Quiz 
+    FOREIGN KEY (QuizID) REFERENCES dbo.Quizzes(QuizID);

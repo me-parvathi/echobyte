@@ -19,6 +19,17 @@ def get_current_employee(
         raise HTTPException(status_code=404, detail="Employee not found for current user")
     return employee
 
+@router.get("/profile/current/comprehensive")
+def get_current_employee_comprehensive(
+    current_user = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get comprehensive current employee profile with all relationships for profile page"""
+    profile_data = service.EmployeeService.get_comprehensive_employee_profile(db, current_user.UserID)
+    if not profile_data:
+        raise HTTPException(status_code=404, detail="Employee not found for current user")
+    return profile_data
+
 # Feedback targets route - must come before parameterized routes
 @router.get("/feedback-targets", response_model=List[schemas.EmployeeFeedbackTargetResponse])
 def get_feedback_targets(db: Session = Depends(get_db)):

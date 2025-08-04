@@ -27,6 +27,8 @@ from api.feedback.routes import router as feedback_router
 from api.auth.routes import router as auth_router
 from api.comments.routes import router as comment_router
 from api.ticket.routes import router as ticket_router
+from api.learning.routes import router as learning_router
+from api.profile.routes import router as profile_router
 
 # Import database utilities
 from core.database import init_database, get_database_health, test_database_connection, get_connection_stats, reset_connection_pool
@@ -90,6 +92,8 @@ app = FastAPI(
     * 💻 **Asset Management** - IT asset tracking and assignments
     * 🎫 **IT Support Tickets** - Help desk ticketing system with SLA management
     * 💬 **Feedback System** - Employee feedback and communication
+    * 📚 **Learning Management** - Course enrollment, progress tracking, and quiz system
+    * 🏆 **Badge System** - Achievement and recognition system
     * 🔐 **Authentication & Authorization** - Secure access control
     
     ## Authentication
@@ -306,6 +310,22 @@ app.include_router(
     prefix="/api/tickets",
     tags=["IT Support Tickets"],
     responses={404: {"description": "Ticket not found"}}
+)
+
+# Learning Management System
+app.include_router(
+    learning_router,
+    prefix="/api/learning",
+    tags=["Learning Management"],
+    responses={404: {"description": "Course, module, or enrollment not found"}}
+)
+
+# Profile Management
+app.include_router(
+    profile_router,
+    prefix="/api/profile",
+    tags=["Profile Management"],
+    responses={404: {"description": "Profile picture not found"}}
 )
 
 # Root endpoints

@@ -1287,3 +1287,26 @@ ALTER TABLE dbo.TimesheetDetails
 
 -- If you want to keep ProjectCode for legacy imports, keep the column but mark one of the two as authoritative.
 
+CREATE TABLE dbo.ProfilePictures (
+    PictureID      INT            IDENTITY(1,1) PRIMARY KEY,
+    EmployeeID     INT            NOT NULL,
+    FileName       NVARCHAR(255)  NOT NULL,
+    FilePath       NVARCHAR(500)  NOT NULL,                    -- Azure Blob URL
+    FileSize       BIGINT         NOT NULL,
+    MimeType       NVARCHAR(100)  NULL,
+    UploadedByID   INT            NOT NULL,
+    UploadedAt     DATETIME2(3)   NOT NULL CONSTRAINT DF_ProfilePictures_UploadedAt DEFAULT SYSUTCDATETIME(),
+
+    CONSTRAINT FK_ProfilePictures_Employee 
+        FOREIGN KEY (EmployeeID) REFERENCES dbo.Employees(EmployeeID),
+    CONSTRAINT FK_ProfilePictures_UploadedBy 
+        FOREIGN KEY (UploadedByID) REFERENCES dbo.Employees(EmployeeID)
+);
+
+-- Index for faster lookups
+CREATE INDEX IX_ProfilePictures_Employee 
+ON dbo.ProfilePictures(EmployeeID);
+
+-- Ensure only one picture per employee (latest upload wins)
+CREATE UNIQUE INDEX UX_ProfilePictures_Employee 
+ON dbo.ProfilePictures(EmployeeID);

@@ -1139,3 +1139,84 @@ export interface CommentListResponse {
   comments: Comment[];
   total_count: number;
 }
+
+export interface ComprehensiveEmployeeProfile {
+  EmployeeID: number
+  EmployeeCode: string
+  UserID: string
+  CompanyEmail: string
+  FirstName: string
+  MiddleName?: string
+  LastName: string
+  FullName: string
+  DateOfBirth?: string
+  GenderCode: string
+  GenderName?: string
+  MaritalStatus?: string
+  PersonalEmail?: string
+  PersonalPhone?: string
+  WorkPhone?: string
+  Address1?: string
+  Address2?: string
+  City?: string
+  State?: string
+  Country?: string
+  PostalCode?: string
+  HireDate: string
+  TerminationDate?: string
+  EmploymentDuration: number
+  IsActive: boolean
+  CreatedAt: string
+  UpdatedAt: string
+  Designation?: {
+    DesignationID: number
+    DesignationName: string
+  }
+  EmploymentType?: {
+    EmploymentTypeCode: string
+    EmploymentTypeName: string
+  }
+  WorkMode?: {
+    WorkModeCode: string
+    WorkModeName: string
+  }
+  Team?: {
+    TeamID: number
+    TeamName: string
+    TeamCode: string
+  }
+  Department?: {
+    DepartmentID: number
+    DepartmentName: string
+    DepartmentCode: string
+  }
+  Location?: {
+    LocationID: number
+    LocationName: string
+    City: string
+    State: string
+    Country: string
+  }
+  Manager?: {
+    EmployeeID: number
+    EmployeeCode: string
+    Name: string
+    Designation: string
+  }
+  EmergencyContacts: EmergencyContact[]
+}
+
+export interface EmergencyContact {
+  ContactID: number
+  EmployeeID: number
+  ContactName: string
+  Relationship: string
+  Phone1: string
+  Phone2?: string
+  Email?: string
+  Address?: string
+  IsPrimary: boolean
+  IsActive: boolean
+  CreatedAt: string
+  UpdatedAt: string
+}

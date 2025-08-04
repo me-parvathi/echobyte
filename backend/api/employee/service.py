@@ -24,6 +24,151 @@ class EmployeeService:
         return db.query(models.Employee).filter(models.Employee.UserID == user_id).first()
     
     @staticmethod
+    def get_comprehensive_employee_profile(db: Session, user_id: str) -> Optional[dict]:
+        """Get comprehensive employee profile with all relationships for the current user"""
+        from api.department.models import Department
+        from api.location.models import Location
+        
+        # Get employee with all relationships
+        employee = db.query(models.Employee).options(
+            joinedload(models.Employee.gender),
+            joinedload(models.Employee.employment_type),
+            joinedload(models.Employee.work_mode),
+            joinedload(models.Employee.designation),
+            joinedload(models.Employee.manager),
+            joinedload(models.Employee.emergency_contacts)
+        ).filter(models.Employee.UserID == user_id).first()
+        
+        if not employee:
+            return None
+        
+        # Get team and department information
+        team_info = db.query(
+            Team.TeamID,
+            Team.TeamName,
+            Team.TeamCode,
+            Department.DepartmentID,
+            Department.DepartmentName,
+            Department.DepartmentCode,
+            Location.LocationID,
+            Location.LocationName,
+            Location.City,
+            Location.State,
+            Location.Country
+        ).join(
+            Department, Team.DepartmentID == Department.DepartmentID
+        ).join(
+            Location, Department.LocationID == Location.LocationID
+        ).filter(
+            Team.TeamID == employee.TeamID
+        ).first()
+        
+        # Get manager information if exists
+        manager_info = None
+        if employee.ManagerID:
+            manager = db.query(
+                models.Employee.EmployeeID,
+                models.Employee.FirstName,
+                models.Employee.LastName,
+                models.Employee.EmployeeCode,
+                models.Designation.DesignationName
+            ).join(
+                models.Designation, models.Employee.DesignationID == models.Designation.DesignationID
+            ).filter(
+                models.Employee.EmployeeID == employee.ManagerID,
+                models.Employee.IsActive == True
+            ).first()
+            
+            if manager:
+                manager_info = {
+                    "EmployeeID": manager.EmployeeID,
+                    "EmployeeCode": manager.EmployeeCode,
+                    "Name": f"{manager.FirstName} {manager.LastName}",
+                    "Designation": manager.DesignationName
+                }
+        
+        # Calculate employment duration
+        from datetime import date
+        hire_date = employee.HireDate
+        today = date.today()
+        employment_years = (today - hire_date).days // 365 if hire_date else 0
+        
+        return {
+            "EmployeeID": employee.EmployeeID,
+            "EmployeeCode": employee.EmployeeCode,
+            "UserID": employee.UserID,
+            "CompanyEmail": employee.CompanyEmail,
+            "FirstName": employee.FirstName,
+            "MiddleName": employee.MiddleName,
+            "LastName": employee.LastName,
+            "FullName": f"{employee.FirstName} {employee.MiddleName or ''} {employee.LastName}".strip(),
+            "DateOfBirth": employee.DateOfBirth,
+            "GenderCode": employee.GenderCode,
+            "GenderName": employee.gender.GenderName if employee.gender else None,
+            "MaritalStatus": employee.MaritalStatus,
+            "PersonalEmail": employee.PersonalEmail,
+            "PersonalPhone": employee.PersonalPhone,
+            "WorkPhone": employee.WorkPhone,
+            "Address1": employee.Address1,
+            "Address2": employee.Address2,
+            "City": employee.City,
+            "State": employee.State,
+            "Country": employee.Country,
+            "PostalCode": employee.PostalCode,
+            "HireDate": employee.HireDate,
+            "TerminationDate": employee.TerminationDate,
+            "EmploymentDuration": employment_years,
+            "IsActive": employee.IsActive,
+            "CreatedAt": employee.CreatedAt,
+            "UpdatedAt": employee.UpdatedAt,
+            "Designation": {
+                "DesignationID": employee.designation.DesignationID,
+                "DesignationName": employee.designation.DesignationName
+            } if employee.designation else None,
+            "EmploymentType": {
+                "EmploymentTypeCode": employee.employment_type.EmploymentTypeCode,
+                "EmploymentTypeName": employee.employment_type.EmploymentTypeName
+            } if employee.employment_type else None,
+            "WorkMode": {
+                "WorkModeCode": employee.work_mode.WorkModeCode,
+                "WorkModeName": employee.work_mode.WorkModeName
+            } if employee.work_mode else None,
+            "Team": {
+                "TeamID": team_info.TeamID,
+                "TeamName": team_info.TeamName,
+                "TeamCode": team_info.TeamCode
+            } if team_info else None,
+            "Department": {
+                "DepartmentID": team_info.DepartmentID,
+                "DepartmentName": team_info.DepartmentName,
+                "DepartmentCode": team_info.DepartmentCode
+            } if team_info else None,
+            "Location": {
+                "LocationID": team_info.LocationID,
+                "LocationName": team_info.LocationName,
+                "City": team_info.City,
+                "State": team_info.State,
+                "Country": team_info.Country
+            } if team_info else None,
+            "Manager": manager_info,
+            "EmergencyContacts": [
+                {
+                    "ContactID": contact.ContactID,
+                    "ContactName": contact.ContactName,
+                    "Relationship": contact.Relationship,
+                    "Phone1": contact.Phone1,
+                    "Phone2": contact.Phone2,
+                    "Email": contact.Email,
+                    "Address": contact.Address,
+                    "IsPrimary": contact.IsPrimary,
+                    "IsActive": contact.IsActive
+                }
+                for contact in employee.emergency_contacts
+                if contact.IsActive
+            ] if employee.emergency_contacts else []
+        }
+    
+    @staticmethod
     def get_employees(
         db: Session, 
         skip: int = 0, 

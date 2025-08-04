@@ -5,7 +5,7 @@ import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,6 +30,7 @@ import {
   CheckCircle,
   Building2,
 } from "lucide-react"
+import { useProfilePicture } from "@/hooks/use-profile-picture"
 
 interface UserInfo {
   email: string
@@ -48,6 +49,12 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
   const { theme, setTheme } = useTheme()
   const [currentTime, setCurrentTime] = useState(new Date())
   const [searchQuery, setSearchQuery] = useState("")
+  
+  // Get employee ID for profile picture fetching
+  const employeeId = userInfo.employeeId ? parseInt(userInfo.employeeId) : 1
+  
+  // Fetch profile picture
+  const { pictureUrl } = useProfilePicture(employeeId)
   const [notifications, setNotifications] = useState([
     {
       id: 1,
@@ -308,6 +315,9 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-10 w-10 rounded-full">
                 <Avatar className="h-10 w-10 ring-2 ring-orange-200 dark:ring-orange-800">
+                  {pictureUrl && (
+                    <AvatarImage src={pictureUrl} alt={userInfo.name} />
+                  )}
                   <AvatarFallback className={`bg-gradient-to-r ${getRoleColor(userInfo.type)} text-white font-medium`}>
                     {getInitials(userInfo.name)}
                   </AvatarFallback>

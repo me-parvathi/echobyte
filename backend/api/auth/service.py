@@ -146,6 +146,7 @@ class AuthService:
             Username=user.Username,
             Email=user.Email,
             IsActive=user.IsActive,
+            PasswordChangedAt=user.PasswordChangedAt,
             CreatedAt=user.CreatedAt,
             UpdatedAt=user.UpdatedAt
         )
@@ -306,7 +307,46 @@ class UserService:
     @staticmethod
     def change_password(db: Session, user_id: str, password_change: schemas.PasswordChangeRequest):
         """Change user password"""
-        return {"message": "Password changed successfully"}
+        # Get user by user_id
+        user = db.query(models.User).filter(models.User.UserID == user_id).first()
+        
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Verify current password
+        if not AuthService.verify_password(password_change.current_password, user.Password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Current password is incorrect"
+            )
+        
+        # Check if new password is different from current password
+        if AuthService.verify_password(password_change.new_password, user.Password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="New password must be different from current password"
+            )
+        
+        # Hash new password
+        hashed_new_password = AuthService.get_password_hash(password_change.new_password)
+        
+        # Update user password and PasswordChangedAt timestamp
+        user.Password = hashed_new_password
+        user.PasswordChangedAt = datetime.utcnow()
+        
+        try:
+            db.commit()
+            db.refresh(user)
+            return {"message": "Password changed successfully"}
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update password"
+            )
 
 class RoleService:
     """Role management service"""

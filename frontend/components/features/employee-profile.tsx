@@ -6,9 +6,22 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { PasswordChangeForm } from "@/components/ui/password-change-form"
+import ProfilePictureUpload from "@/components/ui/profile-picture-upload"
+import { 
+  formatPasswordChangeDate, 
+  formatFullName, 
+  formatAddress, 
+  formatPhoneNumber, 
+  formatDate, 
+  formatEmploymentDuration, 
+  formatGender,
+  getInitials,
+  calculateAge
+} from "@/lib/utils"
 import {
   User,
   MapPin,
@@ -27,17 +40,92 @@ import {
   Users,
   Star,
 } from "lucide-react"
+import useUserInfo from "@/hooks/use-user-info"
+import { useProfilePicture } from "@/hooks/use-profile-picture"
 
 interface UserInfo {
   email: string
   name: string
   department: string
   type: string
+  reportsTo?: string
+  managerName?: string
   employeeId?: string
   position?: string
   joinDate?: string
-  reportsTo?: string
-  managerName?: string
+  passwordChangedAt?: string
+  emergencyContacts?: EmergencyContact[]
+  // New comprehensive fields
+  employeeCode?: string
+  firstName?: string
+  middleName?: string
+  lastName?: string
+  dateOfBirth?: string
+  genderCode?: string
+  genderName?: string
+  maritalStatus?: string
+  personalEmail?: string
+  personalPhone?: string
+  workPhone?: string
+  address1?: string
+  address2?: string
+  city?: string
+  state?: string
+  country?: string
+  postalCode?: string
+  hireDate?: string
+  terminationDate?: string
+  employmentDuration?: number
+  designation?: {
+    designationId: number
+    designationName: string
+  }
+  employmentType?: {
+    employmentTypeCode: string
+    employmentTypeName: string
+  }
+  workMode?: {
+    workModeCode: string
+    workModeName: string
+  }
+  team?: {
+    teamId: number
+    teamName: string
+    teamCode: string
+  }
+  departmentInfo?: {
+    departmentId: number
+    departmentName: string
+    departmentCode: string
+  }
+  location?: {
+    locationId: number
+    locationName: string
+    city: string
+    state: string
+    country: string
+  }
+  manager?: {
+    employeeId: number
+    employeeCode: string
+    name: string
+    designation: string
+  }
+}
+
+interface EmergencyContact {
+  ContactID: number
+  EmployeeID: number
+  ContactName: string
+  Relationship: string
+  Phone1: string
+  Phone2?: string
+  Email?: string
+  Address?: string
+  IsPrimary: boolean
+  IsActive: boolean
+  CreatedAt: string
+  UpdatedAt: string
 }
 
 interface EmployeeProfileProps {
@@ -47,14 +135,21 @@ interface EmployeeProfileProps {
 export default function EmployeeProfile({ userInfo }: EmployeeProfileProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editedInfo, setEditedInfo] = useState(userInfo)
-
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-  }
+  const [showPasswordChange, setShowPasswordChange] = useState(false)
+  const { refetch } = useUserInfo()
+  
+  // Get employee ID for profile picture fetching
+  const employeeId = userInfo.employeeId ? parseInt(userInfo.employeeId) : 
+                    userInfo.employeeCode ? parseInt(userInfo.employeeCode) : 1
+  
+  console.log('User info for profile picture:', {
+    employeeId: userInfo.employeeId,
+    employeeCode: userInfo.employeeCode,
+    resolvedEmployeeId: employeeId
+  })
+  
+  // Fetch profile picture
+  const { pictureUrl: currentPictureUrl, updatePictureUrl } = useProfilePicture(employeeId)
 
   const getRoleColor = (type: string) => {
     switch (type) {
@@ -82,25 +177,42 @@ export default function EmployeeProfile({ userInfo }: EmployeeProfileProps) {
     setIsEditing(false)
   }
 
-  // Mock data for demonstration
+  const formatEmergencyContact = (contacts: EmergencyContact[] | undefined): string => {
+    if (!contacts || contacts.length === 0) {
+      return "No emergency contacts found"
+    }
+    
+    // Find the primary contact first, then fall back to the first contact
+    const primaryContact = contacts.find(contact => contact.IsPrimary) || contacts[0]
+    
+    return `${primaryContact.ContactName} (${primaryContact.Relationship}) - ${primaryContact.Phone1}`
+  }
+
+  // Real data from backend
   const profileData = {
     personalInfo: {
-      fullName: userInfo.name,
+      fullName: formatFullName(userInfo.firstName, userInfo.middleName, userInfo.lastName),
       email: userInfo.email,
-      phone: "+1 (555) 123-4567",
-      address: "123 Main St, San Francisco, CA 94105",
-      dateOfBirth: "1990-05-15",
-      emergencyContact: "Jane Doe - +1 (555) 987-6543",
+      phone: formatPhoneNumber(userInfo.personalPhone || userInfo.workPhone),
+      address: formatAddress(userInfo.address1, userInfo.address2, userInfo.city, userInfo.state, userInfo.country, userInfo.postalCode),
+      dateOfBirth: formatDate(userInfo.dateOfBirth),
+      age: calculateAge(userInfo.dateOfBirth),
+      gender: formatGender(userInfo.genderCode, userInfo.genderName),
+      maritalStatus: userInfo.maritalStatus || "Not specified",
+      personalEmail: userInfo.personalEmail || "Not provided"
     },
     workInfo: {
-      employeeId: userInfo.employeeId || "EMP001",
-      position: userInfo.position || "Software Developer",
-      department: userInfo.department,
-      joinDate: userInfo.joinDate || "2022-01-15",
-      reportsTo: userInfo.managerName || "John Smith",
-      workLocation: "San Francisco Office",
-      employmentType: "Full-time",
-      workSchedule: "Monday - Friday, 9:00 AM - 5:00 PM",
+      employeeId: userInfo.employeeCode || userInfo.employeeId || "Not assigned",
+      position: userInfo.designation?.designationName || userInfo.position || "Not assigned",
+      department: userInfo.departmentInfo?.departmentName || userInfo.department || "Not assigned",
+      team: userInfo.team?.teamName || "Not assigned",
+      joinDate: formatDate(userInfo.hireDate || userInfo.joinDate),
+      employmentDuration: formatEmploymentDuration(userInfo.employmentDuration),
+      reportsTo: userInfo.manager?.name || userInfo.managerName || userInfo.reportsTo || "Not assigned",
+      workLocation: userInfo.location?.locationName || "Not assigned",
+      employmentType: userInfo.employmentType?.employmentTypeName || "Not assigned",
+      workMode: userInfo.workMode?.workModeName || "Not assigned",
+      workSchedule: "Monday - Friday, 9:00 AM - 5:00 PM" // This would come from backend if available
     },
     skills: [
       { name: "JavaScript", level: 90 },
@@ -152,6 +264,9 @@ export default function EmployeeProfile({ userInfo }: EmployeeProfileProps) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-6">
               <Avatar className="w-24 h-24 ring-4 ring-white/20">
+                {currentPictureUrl && (
+                  <AvatarImage src={currentPictureUrl} alt={userInfo.name} />
+                )}
                 <AvatarFallback className="bg-white/20 text-white text-2xl font-bold">
                   {getInitials(userInfo.name)}
                 </AvatarFallback>
@@ -164,7 +279,7 @@ export default function EmployeeProfile({ userInfo }: EmployeeProfileProps) {
                     {userInfo.type.charAt(0).toUpperCase() + userInfo.type.slice(1)}
                   </Badge>
                   <Badge className="bg-white/20 text-white border-white/30 hover:bg-white/30">
-                    {userInfo.department}
+                    {profileData.workInfo.department}
                   </Badge>
                   <Badge className="bg-white/20 text-white border-white/30 hover:bg-white/30">
                     ID: {profileData.workInfo.employeeId}
@@ -215,7 +330,7 @@ export default function EmployeeProfile({ userInfo }: EmployeeProfileProps) {
 
         {/* Personal Information Tab */}
         <TabsContent value="personal">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <Card className="shadow-lg">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -262,7 +377,18 @@ export default function EmployeeProfile({ userInfo }: EmployeeProfileProps) {
                     <Label>Date of Birth</Label>
                     <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                       {profileData.personalInfo.dateOfBirth}
+                      {profileData.personalInfo.age && ` (${profileData.personalInfo.age} years old)`}
                     </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Gender</Label>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{profileData.personalInfo.gender}</p>
+                  </div>
+                  <div>
+                    <Label>Marital Status</Label>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{profileData.personalInfo.maritalStatus}</p>
                   </div>
                 </div>
                 <div>
@@ -272,7 +398,7 @@ export default function EmployeeProfile({ userInfo }: EmployeeProfileProps) {
                 <div>
                   <Label>Emergency Contact</Label>
                   <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                    {profileData.personalInfo.emergencyContact}
+                    {formatEmergencyContact(userInfo.emergencyContacts)}
                   </p>
                 </div>
               </CardContent>
@@ -296,9 +422,15 @@ export default function EmployeeProfile({ userInfo }: EmployeeProfileProps) {
                 <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                   <div>
                     <p className="font-medium text-blue-800 dark:text-blue-400">Last Password Change</p>
-                    <p className="text-sm text-blue-600 dark:text-blue-500">30 days ago</p>
+                    <p className="text-sm text-blue-600 dark:text-blue-500">
+                      {formatPasswordChangeDate(userInfo.passwordChangedAt)}
+                    </p>
                   </div>
-                  <Button variant="outline" size="sm">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => setShowPasswordChange(true)}
+                  >
                     Change
                   </Button>
                 </div>
@@ -313,6 +445,18 @@ export default function EmployeeProfile({ userInfo }: EmployeeProfileProps) {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Profile Picture Upload */}
+            <ProfilePictureUpload
+              employeeId={employeeId}
+              uploadedById={employeeId}
+              currentPictureUrl={currentPictureUrl}
+              employeeName={userInfo.name}
+              onPictureUpdate={(pictureUrl) => {
+                updatePictureUrl(pictureUrl)
+                console.log("Profile picture updated:", pictureUrl)
+              }}
+            />
           </div>
         </TabsContent>
 
@@ -386,8 +530,15 @@ export default function EmployeeProfile({ userInfo }: EmployeeProfileProps) {
                   <div className="flex items-center gap-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
                     <Clock className="w-5 h-5 text-yellow-600" />
                     <div>
-                      <p className="font-medium">Work Schedule</p>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">{profileData.workInfo.workSchedule}</p>
+                      <p className="font-medium">Work Mode</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">{profileData.workInfo.workMode}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 bg-cyan-50 dark:bg-cyan-900/20 rounded-lg">
+                    <Calendar className="w-5 h-5 text-cyan-600" />
+                    <div>
+                      <p className="font-medium">Employment Duration</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">{profileData.workInfo.employmentDuration}</p>
                     </div>
                   </div>
                 </div>
@@ -625,6 +776,17 @@ export default function EmployeeProfile({ userInfo }: EmployeeProfileProps) {
             Save Changes
           </Button>
         </div>
+      )}
+      
+      {/* Password Change Modal */}
+      {showPasswordChange && (
+        <PasswordChangeForm 
+          onClose={() => setShowPasswordChange(false)}
+          onSuccess={() => {
+            // Refresh user info to get updated password change date
+            refetch()
+          }}
+        />
       )}
     </div>
   )

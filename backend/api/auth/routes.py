@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from core.database import get_db
@@ -84,9 +84,17 @@ def delete_user(user_id: str, db: Session = Depends(get_db)):
 def change_password(
     user_id: str,
     password_change: schemas.PasswordChangeRequest,
+    current_user: models.User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """Change user password"""
+    # Ensure users can only change their own password
+    if current_user.UserID != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only change your own password"
+        )
+    
     return service.UserService.change_password(db, user_id, password_change)
 
 # Role routes

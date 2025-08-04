@@ -14,48 +14,145 @@ interface UserInfo {
   employeeId?: string
   position?: string
   joinDate?: string
+  passwordChangedAt?: string
+  emergencyContacts?: EmergencyContact[]
+  // New comprehensive fields
+  employeeCode?: string
+  firstName?: string
+  middleName?: string
+  lastName?: string
+  dateOfBirth?: string
+  genderCode?: string
+  genderName?: string
+  maritalStatus?: string
+  personalEmail?: string
+  personalPhone?: string
+  workPhone?: string
+  address1?: string
+  address2?: string
+  city?: string
+  state?: string
+  country?: string
+  postalCode?: string
+  hireDate?: string
+  terminationDate?: string
+  employmentDuration?: number
+  designation?: {
+    designationId: number
+    designationName: string
+  }
+  employmentType?: {
+    employmentTypeCode: string
+    employmentTypeName: string
+  }
+  workMode?: {
+    workModeCode: string
+    workModeName: string
+  }
+  team?: {
+    teamId: number
+    teamName: string
+    teamCode: string
+  }
+  departmentInfo?: {
+    departmentId: number
+    departmentName: string
+    departmentCode: string
+  }
+  location?: {
+    locationId: number
+    locationName: string
+    city: string
+    state: string
+    country: string
+  }
+  manager?: {
+    employeeId: number
+    employeeCode: string
+    name: string
+    designation: string
+  }
 }
 
-interface EmployeeResponse {
+interface EmergencyContact {
+  ContactID: number
   EmployeeID: number
-  FirstName: string
-  LastName: string
-  GenderCode: string
-  ManagerID?: number
-  TeamID: number
-  LocationID: number
-  DesignationID: number
-  EmploymentTypeCode: string
-  WorkModeCode: string
-  HireDate: string
-  TerminationDate?: string
+  ContactName: string
+  Relationship: string
+  Phone1: string
+  Phone2?: string
+  Email?: string
+  Address?: string
+  IsPrimary: boolean
   IsActive: boolean
   CreatedAt: string
   UpdatedAt: string
-  designation?: {
+}
+
+interface ComprehensiveEmployeeResponse {
+  EmployeeID: number
+  EmployeeCode: string
+  UserID: string
+  CompanyEmail: string
+  FirstName: string
+  MiddleName?: string
+  LastName: string
+  FullName: string
+  DateOfBirth?: string
+  GenderCode: string
+  GenderName?: string
+  MaritalStatus?: string
+  PersonalEmail?: string
+  PersonalPhone?: string
+  WorkPhone?: string
+  Address1?: string
+  Address2?: string
+  City?: string
+  State?: string
+  Country?: string
+  PostalCode?: string
+  HireDate: string
+  TerminationDate?: string
+  EmploymentDuration: number
+  IsActive: boolean
+  CreatedAt: string
+  UpdatedAt: string
+  Designation?: {
     DesignationID: number
     DesignationName: string
-    IsActive: boolean
-    CreatedAt: string
   }
-  employment_type?: {
+  EmploymentType?: {
     EmploymentTypeCode: string
     EmploymentTypeName: string
-    IsActive: boolean
-    CreatedAt: string
   }
-  work_mode?: {
+  WorkMode?: {
     WorkModeCode: string
     WorkModeName: string
-    IsActive: boolean
-    CreatedAt: string
   }
-  gender?: {
-    GenderCode: string
-    GenderName: string
-    IsActive: boolean
-    CreatedAt: string
+  Team?: {
+    TeamID: number
+    TeamName: string
+    TeamCode: string
   }
+  Department?: {
+    DepartmentID: number
+    DepartmentName: string
+    DepartmentCode: string
+  }
+  Location?: {
+    LocationID: number
+    LocationName: string
+    City: string
+    State: string
+    Country: string
+  }
+  Manager?: {
+    EmployeeID: number
+    EmployeeCode: string
+    Name: string
+    Designation: string
+  }
+  EmergencyContacts: EmergencyContact[]
 }
 
 interface UseUserInfoReturn {
@@ -81,28 +178,90 @@ export default function useUserInfo(): UseUserInfoReturn {
     setError(null)
     
     try {
-      // Fetch employee profile and roles in parallel
-      const [employeeResponse, { roles, userType }] = await Promise.all([
-        api.get<EmployeeResponse>("/api/employees/profile/current"),
-        fetchUserRoles()
+      // Fetch comprehensive employee profile, roles, and user auth data
+      const [employeeResponse, { roles, userType }, userAuthData] = await Promise.all([
+        api.get<ComprehensiveEmployeeResponse>("/api/employees/profile/current/comprehensive"),
+        fetchUserRoles(),
+        api.get<any>("/api/auth/me")
       ])
       
-      console.log("Employee response:", employeeResponse)
+      console.log("Comprehensive employee response:", employeeResponse)
       console.log("User roles:", roles)
       console.log("User type:", userType)
+      console.log("User auth data:", userAuthData)
       
       // Transform the response to match the expected UserInfo interface
       const transformedUserInfo: UserInfo = {
-        email: `${employeeResponse.FirstName.toLowerCase()}.${employeeResponse.LastName.toLowerCase()}@company.com`,
-        name: `${employeeResponse.FirstName} ${employeeResponse.LastName}`,
-        department: employeeResponse.designation?.DesignationName || "Unknown",
+        email: employeeResponse.CompanyEmail,
+        name: employeeResponse.FullName,
+        department: employeeResponse.Department?.DepartmentName || "Unknown",
         type: userType,
         employeeId: employeeResponse.EmployeeID.toString(),
-        position: employeeResponse.designation?.DesignationName || "Employee",
+        employeeCode: employeeResponse.EmployeeCode,
+        position: employeeResponse.Designation?.DesignationName || "Employee",
         joinDate: employeeResponse.HireDate,
-        // We'll need to fetch manager name separately if needed
-        managerName: undefined,
-        reportsTo: undefined
+        passwordChangedAt: userAuthData.PasswordChangedAt,
+        emergencyContacts: employeeResponse.EmergencyContacts,
+        // Personal information
+        firstName: employeeResponse.FirstName,
+        middleName: employeeResponse.MiddleName,
+        lastName: employeeResponse.LastName,
+        dateOfBirth: employeeResponse.DateOfBirth,
+        genderCode: employeeResponse.GenderCode,
+        genderName: employeeResponse.GenderName,
+        maritalStatus: employeeResponse.MaritalStatus,
+        personalEmail: employeeResponse.PersonalEmail,
+        personalPhone: employeeResponse.PersonalPhone,
+        workPhone: employeeResponse.WorkPhone,
+        // Address information
+        address1: employeeResponse.Address1,
+        address2: employeeResponse.Address2,
+        city: employeeResponse.City,
+        state: employeeResponse.State,
+        country: employeeResponse.Country,
+        postalCode: employeeResponse.PostalCode,
+        // Work information
+        hireDate: employeeResponse.HireDate,
+        terminationDate: employeeResponse.TerminationDate,
+        employmentDuration: employeeResponse.EmploymentDuration,
+        designation: employeeResponse.Designation ? {
+          designationId: employeeResponse.Designation.DesignationID,
+          designationName: employeeResponse.Designation.DesignationName
+        } : undefined,
+        employmentType: employeeResponse.EmploymentType ? {
+          employmentTypeCode: employeeResponse.EmploymentType.EmploymentTypeCode,
+          employmentTypeName: employeeResponse.EmploymentType.EmploymentTypeName
+        } : undefined,
+        workMode: employeeResponse.WorkMode ? {
+          workModeCode: employeeResponse.WorkMode.WorkModeCode,
+          workModeName: employeeResponse.WorkMode.WorkModeName
+        } : undefined,
+        team: employeeResponse.Team ? {
+          teamId: employeeResponse.Team.TeamID,
+          teamName: employeeResponse.Team.TeamName,
+          teamCode: employeeResponse.Team.TeamCode
+        } : undefined,
+        departmentInfo: employeeResponse.Department ? {
+          departmentId: employeeResponse.Department.DepartmentID,
+          departmentName: employeeResponse.Department.DepartmentName,
+          departmentCode: employeeResponse.Department.DepartmentCode
+        } : undefined,
+        location: employeeResponse.Location ? {
+          locationId: employeeResponse.Location.LocationID,
+          locationName: employeeResponse.Location.LocationName,
+          city: employeeResponse.Location.City,
+          state: employeeResponse.Location.State,
+          country: employeeResponse.Location.Country
+        } : undefined,
+        manager: employeeResponse.Manager ? {
+          employeeId: employeeResponse.Manager.EmployeeID,
+          employeeCode: employeeResponse.Manager.EmployeeCode,
+          name: employeeResponse.Manager.Name,
+          designation: employeeResponse.Manager.Designation
+        } : undefined,
+        // Legacy fields for backward compatibility
+        managerName: employeeResponse.Manager?.Name,
+        reportsTo: employeeResponse.Manager?.Name
       }
       
       setUserInfo(transformedUserInfo)

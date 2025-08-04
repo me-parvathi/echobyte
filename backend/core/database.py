@@ -323,6 +323,7 @@ def init_database() -> None:
         import api.asset.models
         import api.feedback.models
         import api.auth.models
+        import api.profile.models
         
         # Create all tables
         Base.metadata.create_all(bind=engine)

@@ -139,10 +139,14 @@ interface ApiResponse<T = any> {
       console.log(`Making request to: ${url}`); // Add this debug log
       
       const token = await this.getAuthToken();
+      
+      // Check if body is FormData to handle file uploads
+      const isFormData = options.body instanceof FormData;
   
       const config: RequestInit = {
         headers: {
-          'Content-Type': 'application/json',
+          // Don't set Content-Type for FormData, let browser set it with boundary
+          ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
           ...(token && { Authorization: `Bearer ${token}` }),
           ...options.headers,
         },
@@ -183,9 +187,12 @@ interface ApiResponse<T = any> {
     }
   
     async post<T>(endpoint: string, data?: any, options: RequestInit = {}): Promise<T> {
+      // Check if data is FormData (for file uploads)
+      const isFormData = data instanceof FormData;
+      
       return this.request<T>(endpoint, {
         method: 'POST',
-        body: data ? JSON.stringify(data) : undefined,
+        body: data ? (isFormData ? data : JSON.stringify(data)) : undefined,
         ...options,
       });
     }
@@ -213,7 +220,14 @@ interface ApiResponse<T = any> {
   
   export const api = new ApiClient();
   export const apiGet = <T>(endpoint: string, options?: RequestInit) => api.get<T>(endpoint, options);
-  export const apiPost = <T>(endpoint: string, data?: any, options?: RequestInit) => api.post<T>(endpoint, data, options);
-  export const apiPut = <T>(endpoint: string, data?: any, options?: RequestInit) => api.put<T>(endpoint, data, options);
-  export const apiDelete = <T>(endpoint: string, options?: RequestInit) => api.delete<T>(endpoint, options);
-  export const apiPatch = <T>(endpoint: string, data?: any, options?: RequestInit) => api.patch<T>(endpoint, data, options);
+export const apiPost = <T>(endpoint: string, data?: any, options?: RequestInit) => api.post<T>(endpoint, data, options);
+export const apiPut = <T>(endpoint: string, data?: any, options?: RequestInit) => api.put<T>(endpoint, data, options);
+export const apiDelete = <T>(endpoint: string, options?: RequestInit) => api.delete<T>(endpoint, options);
+export const apiPatch = <T>(endpoint: string, data?: any, options?: RequestInit) => api.patch<T>(endpoint, data, options);
+
+// Profile picture specific functions
+export const getLatestProfilePicture = (employeeId: number) => 
+  apiGet<{ FilePath: string; FileName: string; FileSize: number; MimeType: string }>(`/api/profile/${employeeId}/latest`);
+
+export const getProfilePicture = (pictureId: number) => 
+  apiGet<{ FilePath: string; FileName: string; FileSize: number; MimeType: string }>(`/api/profile/picture/${pictureId}`);
