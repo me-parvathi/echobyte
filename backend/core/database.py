@@ -214,18 +214,27 @@ def get_db() -> Generator[Session, None, None]:
             _connection_monitor["failed_requests"] += 1
         logger.error(f"Database error: {e}")
         if db:
-            db.rollback()
+            try:
+                db.rollback()
+            except Exception as rollback_error:
+                logger.error(f"Error during rollback: {rollback_error}")
         raise
     except Exception as e:
         with _connection_monitor["lock"]:
             _connection_monitor["failed_requests"] += 1
         logger.error(f"Unexpected error: {e}")
         if db:
-            db.rollback()
+            try:
+                db.rollback()
+            except Exception as rollback_error:
+                logger.error(f"Error during rollback: {rollback_error}")
         raise
     finally:
         if db:
             try:
+                # Ensure any pending transaction is rolled back
+                if db.is_active:
+                    db.rollback()
                 db.close()
             except Exception as e:
                 logger.error(f"Error closing database session: {e}")

@@ -189,7 +189,6 @@ class TestTimesheetLeaveConflicts:
                 timesheet_schemas.DailyEntryCreate(
                     EmployeeID=self.employee_id,
                     WorkDate=self.test_work_date,
-                    ProjectCode="PROJ-001",
                     TaskDescription="Test task",
                     HoursWorked=8.0,
                     IsOvertime=False
@@ -216,7 +215,6 @@ class TestTimesheetLeaveConflicts:
         daily_data = timesheet_schemas.DailyEntryCreate(
             EmployeeID=self.employee_id,
             WorkDate=self.test_work_date,
-            ProjectCode="PROJ-001",
             TaskDescription="Test task",
             HoursWorked=8.0,
             IsOvertime=False

@@ -29,6 +29,7 @@ from api.comments.routes import router as comment_router
 from api.ticket.routes import router as ticket_router
 from api.learning.routes import router as learning_router
 from api.profile.routes import router as profile_router
+from api.chatbot.routes import router as chatbot_router
 
 # Import database utilities
 from core.database import init_database, get_database_health, test_database_connection, get_connection_stats, reset_connection_pool
@@ -44,7 +45,17 @@ logger = logging.getLogger(__name__)
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "*").split(",")
-CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
+
+# CORS Configuration - Add specific development origins
+DEFAULT_CORS_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000", 
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000"
+]
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",") if os.getenv("CORS_ORIGINS") != "*" else DEFAULT_CORS_ORIGINS
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -94,6 +105,7 @@ app = FastAPI(
     * 💬 **Feedback System** - Employee feedback and communication
     * 📚 **Learning Management** - Course enrollment, progress tracking, and quiz system
     * 🏆 **Badge System** - Achievement and recognition system
+    * 🤖 **AI Chatbot** - Intelligent IT help desk assistant with RAG capabilities
     * 🔐 **Authentication & Authorization** - Secure access control
     
     ## Authentication
@@ -328,6 +340,14 @@ app.include_router(
     responses={404: {"description": "Profile picture not found"}}
 )
 
+# Chatbot
+app.include_router(
+    chatbot_router,
+    prefix="/api/chatbot",
+    tags=["Chatbot"],
+    responses={404: {"description": "Chatbot service not found"}}
+)
+
 # Root endpoints
 
 @app.get("/", tags=["Root"])
@@ -393,6 +413,35 @@ async def reset_connection_pool_endpoint():
         return {
             "status": "error",
             "message": f"Failed to reset connection pool: {str(e)}",
+            "timestamp": time.time()
+        }
+
+@app.post("/health/database/reset", tags=["Health"])
+async def reset_database_connections():
+    """
+    Reset database connections and clear any pending transactions.
+    This can help resolve PendingRollbackError issues.
+    """
+    try:
+        from core.database import reset_connection_pool, engine
+        import sqlalchemy as sa
+        
+        # Reset the connection pool
+        reset_connection_pool()
+        
+        # Dispose and recreate the engine to clear all connections
+        engine.dispose()
+        
+        return {
+            "status": "success",
+            "message": "Database connections reset successfully",
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"Failed to reset database connections: {e}")
+        return {
+            "status": "error",
+            "message": f"Failed to reset database connections: {str(e)}",
             "timestamp": time.time()
         }
 

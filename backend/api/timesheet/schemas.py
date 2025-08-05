@@ -79,7 +79,6 @@ class TimesheetWithEmployeeListResponse(ListResponse):
 class TimesheetDetailBase(BaseModel):
     TimesheetID: int
     WorkDate: date
-    ProjectCode: Optional[str] = None
     TaskDescription: Optional[str] = None
     HoursWorked: float
     IsOvertime: bool = False
@@ -90,7 +89,6 @@ class TimesheetDetailBase(BaseModel):
 class TimesheetDetailSmartCreate(BaseModel):
     EmployeeID: int
     WorkDate: date
-    ProjectCode: Optional[str] = None
     TaskDescription: Optional[str] = None
     HoursWorked: float
     IsOvertime: bool = False
@@ -98,7 +96,6 @@ class TimesheetDetailSmartCreate(BaseModel):
 class TimesheetDetailUpdate(BaseModel):
     TimesheetID: Optional[int] = None
     WorkDate: Optional[date] = None
-    ProjectCode: Optional[str] = None
     TaskDescription: Optional[str] = None
     HoursWorked: Optional[float] = None
     IsOvertime: Optional[bool] = None
@@ -131,7 +128,6 @@ class WeeklyTimesheetCreate(BaseModel):
 class DailyEntryCreate(BaseModel):
     EmployeeID: int
     WorkDate: date
-    ProjectCode: Optional[str] = None
     TaskDescription: Optional[str] = None
     HoursWorked: float
     IsOvertime: bool = False

@@ -162,6 +162,7 @@ interface UseUserInfoReturn {
   isFemale: boolean
   isManager: boolean
   isHR: boolean
+  isIT: boolean
   refetch: () => Promise<void>
 }
 
@@ -172,6 +173,7 @@ export default function useUserInfo(): UseUserInfoReturn {
   const [isFemale, setIsFemale] = useState(false)
   const [isManager, setIsManager] = useState(false)
   const [isHR, setIsHR] = useState(false)
+  const [isIT, setIsIT] = useState(false)
 
   const fetchUserInfo = async () => {
     setLoading(true)
@@ -270,11 +272,13 @@ export default function useUserInfo(): UseUserInfoReturn {
       setIsFemale(employeeResponse.GenderCode === 'F')
       setIsManager(userType === 'manager')
       setIsHR(userType === 'hr')
+      setIsIT(userType === 'it')
       
       console.log("User characteristics:", {
         isFemale: employeeResponse.GenderCode === 'F',
         isManager: userType === 'manager',
-        isHR: userType === 'hr'
+        isHR: userType === 'hr',
+        isIT: userType === 'it'
       })
       
     } catch (err: any) {
@@ -285,6 +289,7 @@ export default function useUserInfo(): UseUserInfoReturn {
       setIsFemale(false)
       setIsManager(false)
       setIsHR(false)
+      setIsIT(false)
     } finally {
       setLoading(false)
     }
@@ -305,6 +310,7 @@ export default function useUserInfo(): UseUserInfoReturn {
     isFemale,
     isManager,
     isHR,
+    isIT,
     refetch
   }
 } 

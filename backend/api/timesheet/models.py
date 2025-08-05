@@ -45,7 +45,6 @@ class TimesheetDetail(Base):
     DetailID = Column(Integer, primary_key=True, autoincrement=True)
     TimesheetID = Column(Integer, ForeignKey("Timesheets.TimesheetID"), nullable=False)
     WorkDate = Column(Date, nullable=False)
-    ProjectCode = Column(String(50))
     TaskDescription = Column(String(200))
     HoursWorked = Column(DECIMAL(4,2), nullable=False)
     IsOvertime = Column(Boolean, nullable=False, default=False)

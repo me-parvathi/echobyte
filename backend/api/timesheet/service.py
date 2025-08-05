@@ -118,7 +118,6 @@ class TimesheetService:
             detail = models.TimesheetDetail(
                 TimesheetID=timesheet.TimesheetID,
                 WorkDate=detail_data.WorkDate,
-                ProjectCode=detail_data.ProjectCode,
                 TaskDescription=detail_data.TaskDescription,
                 HoursWorked=detail_data.HoursWorked,
                 IsOvertime=detail_data.IsOvertime
@@ -227,7 +226,6 @@ class TimesheetService:
             
             if existing_detail:
                 # Update existing detail
-                existing_detail.ProjectCode = daily_data.ProjectCode
                 existing_detail.TaskDescription = daily_data.TaskDescription
                 existing_detail.HoursWorked = daily_data.HoursWorked
                 existing_detail.IsOvertime = daily_data.IsOvertime
@@ -243,7 +241,6 @@ class TimesheetService:
                 detail = models.TimesheetDetail(
                     TimesheetID=timesheet.TimesheetID,
                     WorkDate=daily_data.WorkDate,
-                    ProjectCode=daily_data.ProjectCode,
                     TaskDescription=daily_data.TaskDescription,
                     HoursWorked=daily_data.HoursWorked,
                     IsOvertime=daily_data.IsOvertime
@@ -269,7 +266,6 @@ class TimesheetService:
                 
                 if existing_detail:
                     # Update existing detail
-                    existing_detail.ProjectCode = daily_data.ProjectCode
                     existing_detail.TaskDescription = daily_data.TaskDescription
                     existing_detail.HoursWorked = daily_data.HoursWorked
                     existing_detail.IsOvertime = daily_data.IsOvertime
@@ -460,7 +456,7 @@ class TimesheetService:
         
         print(f"DEBUG: Found {len(details)} timesheet details for timesheet {current_week.TimesheetID}")
         for detail in details:
-            print(f"DEBUG: Detail - Date: {detail.WorkDate}, Hours: {detail.HoursWorked}, Project: {detail.ProjectCode}")
+            print(f"DEBUG: Detail - Date: {detail.WorkDate}, Hours: {detail.HoursWorked}, Task: {detail.TaskDescription}")
         
         # Attach details to current week
         current_week.details = details

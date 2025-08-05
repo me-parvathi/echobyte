@@ -21,7 +21,8 @@ import {
   Mail, 
   AlertTriangle,
   Eye,
-  TicketIcon
+  TicketIcon,
+  X
 } from "lucide-react"
 import { useTickets, useTicketLookups, useAssetSelection } from "@/hooks/use-tickets"
 import useUserInfo from "@/hooks/use-user-info"
@@ -32,7 +33,7 @@ import { TicketCreate } from "@/lib/types"
 import { useToast } from "@/hooks/use-toast"
 
 export default function SupportTicket() {
-  const { userInfo } = useUserInfo()
+  const { userInfo, isManager, isHR, isIT } = useUserInfo()
   const { toast } = useToast()
   
   // Form state
@@ -49,6 +50,29 @@ export default function SupportTicket() {
   const [newComment, setNewComment] = useState("")
   const [isSubmittingComment, setIsSubmittingComment] = useState(false)
   const [shouldFetchTickets, setShouldFetchTickets] = useState(false)
+
+  // Chatbot state
+  const [isChatbotOpen, setIsChatbotOpen] = useState(false)
+  const [chatMessages, setChatMessages] = useState([
+    {
+      sender: "bot",
+      text: "Hello! I'm ByteMate, your IT assistant. How can I help you today?",
+    },
+  ])
+  const [chatInput, setChatInput] = useState("")
+  const [botTyping, setBotTyping] = useState(false)
+  
+  // Quick reply state
+  const [quickReplies, setQuickReplies] = useState([
+    "Regarding password",
+    "Regarding tickets", 
+    "Contact IT Support",
+    "Any other issue"
+  ])
+  const [showSubReplies, setShowSubReplies] = useState([])
+  
+  // Determine user role for chatbot visibility
+  const role = isIT ? "it" : isHR ? "hr" : isManager ? "manager" : "employee"
 
   // Hooks for data fetching with pagination
   const { 
@@ -244,6 +268,75 @@ export default function SupportTicket() {
       setIsSubmittingComment(false)
     }
   }
+
+  // Chatbot function
+  const handleChatSend = async () => {
+    if (!chatInput.trim()) return
+    
+    const userMessage = { sender: "user", text: chatInput }
+    setChatMessages((prev) => [...prev, userMessage])
+    setChatInput("")
+    setBotTyping(true)
+    
+    try {
+      const response = await fetch('http://localhost:8000/api/chatbot/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+        },
+        body: JSON.stringify({
+          session_id: `chat_${Date.now()}`,
+          user_message: chatInput
+        })
+      })
+
+      const data = await response.json()
+      
+      if (data.response) {
+        setChatMessages((prev) => [...prev, { sender: "bot", text: data.response }])
+      } else if (data.error) {
+        console.error('API Error:', data.error)
+        setChatMessages((prev) => [...prev, { sender: "bot", text: `Error: ${data.error}` }])
+      } else {
+        setChatMessages((prev) => [...prev, { sender: "bot", text: "Got it! I'll check on that for you." }])
+      }
+    } catch (error) {
+      console.error('Chat error:', error)
+      setChatMessages((prev) => [...prev, { sender: "bot", text: "Sorry, I encountered an error. Please try again." }])
+    } finally {
+      setBotTyping(false)
+    }
+  }
+
+  // Quick reply handler
+  const handleQuickReply = (option) => {
+    if (option === "Regarding password") {
+      setShowSubReplies([
+        "Reset Password",
+        "Forgot your Password", 
+        "Change my password",
+        "Password reset link expired",
+        "Account locked after password attempts"
+      ]);
+    } else if (option === "Regarding tickets") {
+      setShowSubReplies([
+        "My ticket number",
+        "My ticket status",
+        "How long will it take to resolve my ticket?",
+        "Raise a new ticket",
+        "Reopen closed ticket", 
+        "Update my existing ticket"
+      ]);
+    } else if (option === "Contact IT Support") {
+      setShowSubReplies(["Email: it-support@echobyte.com", "Phone: +1 (800) 555-1234"]);
+    } else if (option === "Any other issue") {
+      setShowSubReplies(["Please explain your issue."]);
+    } else {
+      setChatInput(option);
+      handleChatSend();
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -629,6 +722,173 @@ export default function SupportTicket() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Floating Chatbot Button */}
+      {/* Show for all users */}
+      {true && (
+        <button
+          onClick={() => setIsChatbotOpen(true)}
+          className={`fixed bottom-6 right-6 w-14 h-14 rounded-full flex items-center justify-center shadow-lg
+                bg-gradient-to-r from-blue-500 to-orange-500
+                text-white hover:scale-105 transition-transform duration-200`}
+          style={{
+            animation: "pulseGlow 2s infinite",
+            boxShadow: "0 0 10px rgba(59,130,246,0.7), 0 0 20px rgba(249,115,22,0.7)",
+          }}
+        >
+          <MessageSquare size={24} />
+        </button>
+      )}
+
+      {/* Chatbot Panel */}
+      {/* Show for all users */}
+      {true && isChatbotOpen && (
+        <div className="fixed bottom-20 right-6 w-96 h-[500px] rounded-2xl backdrop-blur-lg bg-white/95 border border-white/30 shadow-xl flex flex-col overflow-hidden animate-slideUp z-50">
+          {/* Header */}
+          <div className="flex justify-between items-center p-3 bg-gradient-to-r from-blue-500 to-orange-500 text-white">
+            <span className="font-semibold">ByteMate AI</span>
+            <X
+              className="cursor-pointer hover:bg-white/20 rounded p-1"
+              onClick={() => setIsChatbotOpen(false)}
+            />
+          </div>
+
+          {/* Messages */}
+          <div className="flex-1 p-3 overflow-y-auto space-y-3">
+            {chatMessages.map((msg, idx) => (
+              <div
+                key={idx}
+                className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"} items-start gap-2`}
+              >
+                {msg.sender === "bot" && (
+                  <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm font-bold">
+                    AI
+                  </div>
+                )}
+                <div
+                  className={`p-2 rounded-lg max-w-[75%] ${
+                    msg.sender === "user"
+                      ? "bg-blue-500 text-white rounded-br-none"
+                      : "bg-gray-200 text-gray-800 rounded-bl-none"
+                  }`}
+                >
+                  {msg.text}
+                </div>
+                {msg.sender === "user" && (
+                  <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white text-sm font-bold">
+                    You
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {/* Typing indicator */}
+            {botTyping && (
+              <div className="flex items-center gap-2 text-gray-600 text-sm">
+                <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold">
+                  AI
+                </div>
+                <div className="bg-gray-300 rounded-lg px-3 py-1 flex items-center gap-1">
+                  <span className="typing-dot"></span>
+                  <span className="typing-dot"></span>
+                  <span className="typing-dot"></span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Quick Replies */}
+          {showSubReplies.length > 0 && (
+            <div className="p-3 border-t border-gray-200">
+              <div className="flex flex-wrap gap-2">
+                {showSubReplies.map((opt, i) =>
+                  opt.startsWith("Email:") || opt.startsWith("Phone:") ? (
+                    <div key={i} className="text-sm text-gray-600 font-medium px-3 py-1 bg-gray-100 rounded-lg">
+                      {opt}
+                    </div>
+                  ) : (
+                    <button 
+                      key={i} 
+                      onClick={() => {
+                        setChatInput(opt);
+                        handleChatSend();
+                      }}
+                      className="px-3 py-1 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                    >
+                      {opt}
+                    </button>
+                  )
+                )}
+              </div>
+            </div>
+          )}
+
+          {quickReplies.length > 0 && showSubReplies.length === 0 && (
+            <div className="p-3 border-t border-gray-200">
+              <div className="flex flex-wrap gap-2">
+                {quickReplies.map((option, i) => (
+                  <button 
+                    key={i} 
+                    onClick={() => handleQuickReply(option)}
+                    className="px-3 py-1 text-sm bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Input */}
+          <div className="p-3 border-t border-gray-200 flex gap-2">
+            <input
+              type="text"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              placeholder="Ask ByteMate for help..."
+              className="flex-1 rounded-lg px-3 py-2 text-sm border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onKeyDown={(e) => e.key === "Enter" && handleChatSend()}
+              disabled={botTyping}
+            />
+            <Button 
+              onClick={handleChatSend} 
+              disabled={botTyping || !chatInput.trim()} 
+              className="bg-blue-500 text-white hover:bg-blue-600"
+            >
+              <Send size={16} />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Styles */}
+      <style jsx>{`
+        @keyframes pulseGlow {
+          0%, 100% {
+            transform: scale(1);
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.7), 0 0 20px rgba(249, 115, 22, 0.7);
+          }
+          50% {
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(59, 130, 246, 1), 0 0 30px rgba(249, 115, 22, 1);
+          }
+        }
+        @keyframes slideUp {
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-slideUp { animation: slideUp 0.3s ease-in-out; }
+        .typing-dot {
+          width: 6px; height: 6px; background-color: #555; border-radius: 50%;
+          display: inline-block; animation: blink 1s infinite;
+        }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes blink {
+          0%, 80%, 100% { transform: scale(0.8); opacity: 0.4; }
+          40% { transform: scale(1); opacity: 1; }
+        }
+      `}</style>
     </div>
   )
 }

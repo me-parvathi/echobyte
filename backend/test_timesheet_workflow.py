@@ -37,7 +37,6 @@ def test_weekly_timesheet_creation():
             {
                 "EmployeeID": 1,
                 "WorkDate": (week_start + timedelta(days=0)).isoformat(),  # Monday
-                "ProjectCode": "PROJ-001",
                 "TaskDescription": "Feature development",
                 "HoursWorked": 8.0,
                 "IsOvertime": False
@@ -45,7 +44,6 @@ def test_weekly_timesheet_creation():
             {
                 "EmployeeID": 1,
                 "WorkDate": (week_start + timedelta(days=1)).isoformat(),  # Tuesday
-                "ProjectCode": "PROJ-001",
                 "TaskDescription": "Bug fixes",
                 "HoursWorked": 7.5,
                 "IsOvertime": False
@@ -53,7 +51,6 @@ def test_weekly_timesheet_creation():
             {
                 "EmployeeID": 1,
                 "WorkDate": (week_start + timedelta(days=2)).isoformat(),  # Wednesday
-                "ProjectCode": "PROJ-002",
                 "TaskDescription": "Code review",
                 "HoursWorked": 6.0,
                 "IsOvertime": False
@@ -61,7 +58,6 @@ def test_weekly_timesheet_creation():
             {
                 "EmployeeID": 1,
                 "WorkDate": (week_start + timedelta(days=3)).isoformat(),  # Thursday
-                "ProjectCode": "PROJ-001",
                 "TaskDescription": "Testing",
                 "HoursWorked": 8.5,
                 "IsOvertime": True
@@ -69,7 +65,6 @@ def test_weekly_timesheet_creation():
             {
                 "EmployeeID": 1,
                 "WorkDate": (week_start + timedelta(days=4)).isoformat(),  # Friday
-                "ProjectCode": "PROJ-002",
                 "TaskDescription": "Documentation",
                 "HoursWorked": 4.0,
                 "IsOvertime": False
@@ -112,7 +107,6 @@ def test_daily_entry_creation():
         {
             "EmployeeID": 2,  # Different employee
             "WorkDate": (next_week_start + timedelta(days=0)).isoformat(),  # Monday
-            "ProjectCode": "PROJ-003",
             "TaskDescription": "Daily entry test - Monday",
             "HoursWorked": 8.0,
             "IsOvertime": False
@@ -120,7 +114,6 @@ def test_daily_entry_creation():
         {
             "EmployeeID": 2,
             "WorkDate": (next_week_start + timedelta(days=1)).isoformat(),  # Tuesday
-            "ProjectCode": "PROJ-003",
             "TaskDescription": "Daily entry test - Tuesday",
             "HoursWorked": 7.0,
             "IsOvertime": False
@@ -128,7 +121,6 @@ def test_daily_entry_creation():
         {
             "EmployeeID": 2,
             "WorkDate": (next_week_start + timedelta(days=2)).isoformat(),  # Wednesday
-            "ProjectCode": "PROJ-004",
             "TaskDescription": "Daily entry test - Wednesday",
             "HoursWorked": 9.0,
             "IsOvertime": True
@@ -149,7 +141,7 @@ def test_daily_entry_creation():
                 print(f"✅ Daily entry created/updated successfully!")
                 print(f"  Work Date: {data['WorkDate']}")
                 print(f"  Hours: {data['HoursWorked']}")
-                print(f"  Project: {data['ProjectCode']}")
+                print(f"  Task: {data['TaskDescription']}")
             else:
                 print(f"❌ Error: {response.text}")
         except Exception as e:
@@ -167,7 +159,6 @@ def test_daily_entry_update():
     update_data = {
         "EmployeeID": 2,
         "WorkDate": work_date.isoformat(),
-        "ProjectCode": "PROJ-003-UPDATED",
         "TaskDescription": "Updated task description",
         "HoursWorked": 8.5,
         "IsOvertime": True
@@ -186,7 +177,7 @@ def test_daily_entry_update():
             print("✅ Daily entry updated successfully!")
             print(f"  Work Date: {data['WorkDate']}")
             print(f"  Updated Hours: {data['HoursWorked']}")
-            print(f"  Updated Project: {data['ProjectCode']}")
+            print(f"  Updated Task: {data['TaskDescription']}")
             print(f"  Updated Description: {data['TaskDescription']}")
         else:
             print(f"❌ Error: {response.text}")
@@ -213,7 +204,7 @@ def test_get_daily_entry():
             print("✅ Daily entry retrieved successfully!")
             print(f"  Work Date: {data['WorkDate']}")
             print(f"  Hours: {data['HoursWorked']}")
-            print(f"  Project: {data['ProjectCode']}")
+            print(f"  Task: {data['TaskDescription']}")
         elif response.status_code == 404:
             print("ℹ️ No daily entry found for this date (expected if no entry exists)")
         else:
