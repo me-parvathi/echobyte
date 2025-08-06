@@ -4,11 +4,15 @@ import uuid
 import bcrypt
 import pyodbc
 import openai
+import re
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify
 from flask_cors import CORS , cross_origin
 from datetime import datetime, timedelta
 from system_prompt import SYSTEM_PROMPT
+from rag_engine.retriever import get_rag_response
+
+
 
 
 load_dotenv()
@@ -38,7 +42,14 @@ def get_db_connection():
 def get_employee_id_by_username(username):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT EmployeeID FROM Employees WHERE UserID = ?", (username,))
+    
+    cursor.execute("""
+        SELECT e.EmployeeID 
+        FROM dbo.Users u
+        JOIN dbo.Employees e ON u.UserID = e.UserID
+        WHERE LOWER(u.Username) = LOWER(?)
+    """, (username,))
+    
     row = cursor.fetchone()
     conn.close()
     return row[0] if row else None
@@ -66,7 +77,23 @@ def get_ticket_status(username):
     row = cursor.fetchone()
     conn.close()
     return f"Your ticket status is: {row[0]}" if row else "No ticket found."
+# Guardrails
+PROFANITY_LIST = ["idiot", "stupid", "damn", "shit", "fuck", "bitch", "asshole"]
+OFF_TOPIC_KEYWORDS = ["movie", "song", "relationship", "poem", "story"]
+SENSITIVE_PATTERNS = [
+    r"\b\d{3}-\d{2}-\d{4}\b",  # SSN
+    r"\b[\w.-]+@[\w.-]+\.\w+\b",  # email
+    r"(AKIA|SKIA|ghp_)[A-Za-z0-9]{16,}"
+]
 
+def contains_profanity(text):
+    return any(re.search(rf"\b{re.escape(word)}\b", text.lower()) for word in PROFANITY_LIST)
+
+def is_off_topic(text):
+    return any(keyword in text.lower() for keyword in OFF_TOPIC_KEYWORDS)
+
+def contains_sensitive_data(text):
+    return any(re.search(pat, text) for pat in SENSITIVE_PATTERNS)
 
 # Store for session messages
 conversations = {}
@@ -86,7 +113,7 @@ def login():
     # Check if username exists in the database
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT 1 FROM dbo.Users WHERE Username = ?", (username,))
+    cursor.execute("SELECT Username FROM dbo.Users WHERE LOWER(Username) = LOWER(?)", (username,))
     user_exists = cursor.fetchone()
     conn.close()
 
@@ -133,25 +160,25 @@ def chat():
 
 
         # Handle predefined responses
-        response = ""
-        if user_question.lower() == "my ticket number":
+        # Guardrails
+        if contains_profanity(user_question):
+            response = "Please keep the conversation respectful. I'm here to assist you."
+        elif is_off_topic(user_question):
+            response = "I'm here to help with IT Help Desk topics only."
+        elif contains_sensitive_data(user_question):
+            response = "Please do not share sensitive information. Contact IT if needed."
+        elif user_question.lower() == "my ticket number":
             response = get_ticket_number(username)
-
         elif user_question.lower() == "my ticket status":
             response = get_ticket_status(username)
-
         elif user_question.lower() == "how long will it take to resolve my ticket?":
             response = "It usually takes 2–5 business days to resolve a ticket."
-
-        elif user_question.lower() == "hi" or user_question.lower() == "hello":
+        elif user_question.lower() in ["hi", "hello"]:
             response = f"Hi {username.split('.')[0].capitalize()}, how can I help you today?"
-
         elif user_question.lower() in ["logout", "sign out"]:
             response = "You have been logged out. See you again!"
-
         else:
-            # fallback to default LLM (if applicable)
-            response = generate_gpt_response(session_id, user_question)
+            response = get_rag_response(user_question)
 
         conversations[session_id].append({"role": "user", "content": user_question})
         conversations[session_id].append({"role": "assistant", "content": response})
