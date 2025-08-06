@@ -1,29 +1,40 @@
 import os
-import glob
-import chromadb
-from sentence_transformers import SentenceTransformer
+from dotenv import load_dotenv
+from langchain_community.document_loaders import TextLoader
+from langchain_community.vectorstores import FAISS
+from langchain_openai import AzureOpenAIEmbeddings
 
-docs_path = "./rag_engine/docs"
-model = SentenceTransformer("all-MiniLM-L6-v2")
-client = chromadb.PersistentClient(path="./rag_engine/chroma_store")
-collection = client.create_collection("helpdesk_docs")
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 
-def load_docs():
-    chunks = []
-    for filepath in glob.glob(f"{docs_path}/*.txt"):
-        with open(filepath, "r", encoding="utf-8") as f:
-            text = f.read()
-            for para in text.split("\n\n"):
-                if para.strip():
-                    chunks.append(para.strip())
-    return chunks
+# Load .env
+load_dotenv()
 
-def main():
-    docs = load_docs()
-    embeddings = model.encode(docs).tolist()
-    for i, doc in enumerate(docs):
-        collection.add(documents=[doc], ids=[f"doc_{i}"], embeddings=[embeddings[i]])
-    print("Embedding done.")
+# Load and split the document
+loader = TextLoader("./docs/helpdesk_faq.txt", encoding="utf-8")
+documents = loader.load()
 
-if __name__ == "__main__":
-    main()
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=150, chunk_overlap=20)
+docs = text_splitter.split_documents(documents)
+
+# Print deployment to debug
+print("Using deployment:", os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT"))
+print("Using API key:", os.getenv("AZURE_OPENAI_API_KEY"))   
+print("Using API base:", os.getenv("AZURE_OPENAI_ENDPOINT"))
+
+
+# Initialize embedding model with correct fields
+embeddings = AzureOpenAIEmbeddings(
+    azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT"),
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+    api_version=os.getenv("AZURE_OPENAI_API_VERSION")
+)
+
+print("Using deployment:", os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT"))
+print("Using API key:", os.getenv("AZURE_OPENAI_API_KEY"))   
+print("Using API base:", os.getenv("AZURE_OPENAI_ENDPOINT"))
+
+# Create and save vector store
+db = FAISS.from_documents(docs, embeddings)
+db.save_local("vector_store")
+print("✅ Vector store created successfully.")
