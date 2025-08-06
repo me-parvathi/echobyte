@@ -1,10 +1,188 @@
 Password Reset:
-Employees can reset their passwords at https://reset.company.com. If you face issues, contact IT at it@company.com.
+Employees can reset their passwords by navigating to:
+Employee Portal → Profile → Account Security → Change Password.
 
 VPN Access:
-Install GlobalProtect VPN. Use your employee ID to log in. For issues, raise a ticket on ServiceNow.
+Install the GlobalProtect VPN. Use your employee ID to log in. If issues occur, raise a support ticket.
 
 Ticket SLA:
-Low priority - 72 hours
-Medium priority - 24 hours
-High priority - 6 hours
+Low priority – 72 hours  
+Medium priority – 24 hours  
+High priority – 6 hours
+
+Forgot Password:
+Use the Employee Portal → Profile → Account Security → Change Password to recover your account.
+
+Change Password:
+Change your password via Employee Portal → Profile → Account Security.
+
+Account Locked:
+Accounts lock after 5 failed attempts. Wait 15 minutes or contact IT support for assistance.
+
+Password Link Expired:
+Reset password using Employee Portal → Profile → Account Security.
+
+VPN Issues:
+Restart the GlobalProtect VPN client and reconnect. If the issue persists, raise a support ticket and attach logs.
+
+Remote Desktop Access:
+Connect via VPN, then use Remote Desktop with your device IP or hostname.
+
+Remote Work Setup:
+Ensure VPN access, remote desktop rights, and company security tools are installed.
+
+New Employee Onboarding:
+Complete onboarding tasks via HR Portal. IT asset provisioning is coordinated by the IT Assets Team.
+
+Laptop Request:
+Request laptops through the Employee Portal under Support → Ticket Create → Select Category → Submit.
+
+Monitor/Peripheral Request:
+Submit a support ticket specifying department and justification.
+
+Software Installation:
+Use the Software Center (Windows) or Self Service (macOS). Admin access is restricted.
+
+Admin Access Request:
+Temporary admin rights require approval from your manager and security.
+
+Ticket Creation:
+Go to: Employee Portal → Support → Ticket Create → Select Category → Submit.
+
+Ticket Status:
+To check status: Employee Portal → Support → View My Tickets.
+
+Reopen Closed Ticket:
+Reply to the resolution message or use the portal to reopen.
+
+Update Ticket:
+Log in to the Employee Portal → Support → My Tickets → Edit Ticket.
+
+Ticket Resolution Time:
+Simple tickets – 2 business days. Complex issues – up to 5 business days.
+
+Priority Ticket Escalation:
+Mark the ticket as 'High Priority' or contact your manager.
+
+IT Support Contact:
+Reach out through the Employee Portal → Support.
+
+Wi-Fi Access:
+Connect to CompanySecure Wi-Fi using company credentials.
+
+Wi-Fi Not Working:
+Reconnect to the network or restart your device. Raise a ticket if it persists.
+
+Printer Setup:
+Go to Devices and Printers → Add Printer → Enter company printer path.
+
+Network Issues:
+Check your network connection, restart your router (remote), or contact IT support.
+
+Email Setup:
+Use Outlook or Gmail with your company credentials. Setup guides are available on the portal.
+
+Email Signature:
+Use the approved template from the HR Portal.
+
+Outlook Not Syncing:
+Restart Outlook, clear cache, or re-add your account.
+
+Calendar Sharing:
+Go to Outlook → Calendar Permissions → Share Calendar.
+
+Shared Mailbox Access:
+Use Outlook → Account Settings → Add shared mailbox.
+
+Group Creation:
+Submit a request via the support portal with group name and members.
+
+Account Deactivation:
+Manager must raise a ticket through the Employee Portal to deactivate an account.
+
+Data Backup:
+Use OneDrive or the file server to store work. Deleted local files cannot be restored.
+
+Device Lost/Stolen:
+Report immediately to IT and Security.
+
+Asset Tag Lookup:
+Find the asset tag label on the bottom of your laptop.
+
+Device Not Booting:
+Try power cycling. If not resolved, visit the IT desk.
+
+Zoom/Teams Issues:
+Update to the latest version or reinstall the application.
+
+Software License:
+Request a license by submitting a support ticket with business justification.
+
+Two-Factor Authentication:
+Setup via: Employee Portal → Profile → Account Security.
+
+Authenticator Setup:
+Follow instructions under Profile → Account Security in the portal.
+
+Security Awareness:
+Annual training on phishing and password security is mandatory.
+
+Phishing Report:
+Forward suspicious content to IT Security via the support ticket system.
+
+USB Blocked:
+Raise a ticket for temporary USB access with manager approval.
+
+Time Tracking Access:
+Log in to the Time Tracking Portal using your Employee ID. Password reset available under Account Security.
+
+Hardware Return:
+Employees must return all assets to IT before their last working day.
+
+Incident Reporting:
+Report security or HR issues via the Employee Portal.
+
+Work From Home Policy:
+Review guidelines on the HR portal. Ensure secure setup and VPN access.
+
+Browser Not Supported:
+Use Chrome or Edge for optimal compatibility.
+
+Slack Invite:
+Request access via a support ticket or use your company email.
+
+Company Holiday List:
+View via HR portal or shared Outlook calendar.
+
+New Software Request:
+Submit a ticket with the software name, version, and business need.
+
+Blue Screen After Sleep:
+Likely driver-related. Update from Device Manager or contact IT.
+
+Outlook Error 0x800CCC0E:
+Check VPN and mail server settings if Outlook can't connect.
+
+Teams Camera Not Detected:
+Ensure no other app is using the camera. Update camera drivers.
+
+Slow Boot Time:
+Disable startup items and clean disk via system tools.
+
+Wi-Fi Drops Frequently:
+Switch to 2.4GHz band or update Wi-Fi drivers.
+
+OneDrive Sync Error:
+Shorten file paths and folder structures to fix sync errors.
+
+Windows Activation Issue:
+Reactivation may be needed after hardware changes. Contact IT with the license key.
+
+Printer Offline:
+Restart the printer and connect via IP.
+
+BitLocker Recovery Prompt:
+Enter the BitLocker key stored in the company's Azure Active Directory.
+
+Screen Flickering on Dock:
+Try a different cable or update dock firmware.
