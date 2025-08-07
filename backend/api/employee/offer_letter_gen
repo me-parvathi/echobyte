@@ -1,7 +1,15 @@
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+from . import schemas  # adjust if needed
+from core.database import get_db  # adjust if needed
 from reportlab.pdfgen import canvas
 from datetime import date
+import os
+
+router = APIRouter()
 
 def create_offer_letter(employee_data, output_path):
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
     c = canvas.Canvas(output_path)
     c.drawString(100, 750, f"OFFER LETTER")
     c.drawString(100, 730, f"Date: {date.today().strftime('%B %d, %Y')}")
@@ -9,3 +17,15 @@ def create_offer_letter(employee_data, output_path):
     c.drawString(100, 690, f"Position: {employee_data['position']}")
     c.drawString(100, 670, f"Salary: ${employee_data['salary']: ,.2f}")
     c.save()
+
+@router.get("/employee/{employee_id}")
+def get_docs_for_employee(employee_id: int, db: Session = Depends(get_db)):
+    # TODO: Implement actual logic to fetch employee docs
+    return []
+
+@router.post("/generate-offer-letter")
+def generate_offer_letter_for_employee(employee: schemas.EmployeeInfo):
+    filename = f"{employee.id}_offer_letter.pdf"
+    output_path = f"./letters/{filename}"
+    create_offer_letter(employee.dict(), output_path)
+    return {"filename": filename}

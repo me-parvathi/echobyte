@@ -1,0 +1,25 @@
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from models.db import get_db
+from crud import hr_docs as crud
+from schemas import hr_docs as schemas
+
+router = APIRouter(
+    prefix="/hr-docs",
+    tags=["HR Documents"]
+)
+
+# GET: All docs visible to an employee
+@router.get("/employee/{employee_id}")
+def get_docs_for_employee(employee_id: int, db: Session = Depends(get_db)):
+    return crud.get_docs_for_employee(db, employee_id)
+
+# POST: Upload a new document
+@router.post("/upload")
+def upload_document(doc: schemas.HRDocumentCreate, db: Session = Depends(get_db)):
+    return crud.create_document(db, doc)
+
+# DELETE: Remove a document
+@router.delete("/{document_id}")
+def delete_document(document_id: int, db: Session = Depends(get_db)):
+    return crud.delete_document(db, document_id)

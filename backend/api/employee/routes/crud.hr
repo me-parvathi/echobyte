@@ -1,0 +1,24 @@
+from models import db as models
+from sqlalchemy.orm import Session
+from schemas import hr_docs as schemas
+
+def create_document(db: Session, doc: schemas.HRDocumentCreate):
+    new_doc = models.HRDocuments(**doc.dict())
+    db.add(new_doc)
+    db.commit()
+    db.refresh(new_doc)
+    return new_doc
+
+def get_docs_for_employee(db: Session, employee_id: int):
+    common_docs = db.query(models.HRDocuments).filter_by(IsCommonDocument=True).all()
+    specific_docs = db.query(models.HRDocuments).join(
+        models.EmployeeDocuments,
+        models.HRDocuments.DocumentID == models.EmployeeDocuments.DocumentID
+    ).filter(models.EmployeeDocuments.EmployeeID == employee_id).all()
+    return common_docs + specific_docs
+
+def delete_document(db: Session, document_id: int):
+    db.query(models.EmployeeDocuments).filter_by(DocumentID=document_id).delete()
+    db.query(models.HRDocuments).filter_by(DocumentID=document_id).delete()
+    db.commit()
+    return {"msg": "Deleted successfully"}
