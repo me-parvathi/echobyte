@@ -1,0 +1,2 @@
+# backend/api/induc_hr/__init__.py
+from backend.api.induc_hr.induction import router as hr_docs_router

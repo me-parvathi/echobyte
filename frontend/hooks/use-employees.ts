@@ -1,6 +1,11 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { api } from '@/lib/api';
-import { Employee, EmployeeListResponse, ManagerTeamOverviewResponse, EmployeeFeedbackTargetResponse } from '@/lib/types';
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { api } from "@/lib/api";
+import {
+  Employee,
+  EmployeeListResponse,
+  ManagerTeamOverviewResponse,
+  EmployeeFeedbackTargetResponse,
+} from "@/lib/types";
 
 /**
  * Simple in-memory caches so that multiple instances of the hook share the same
@@ -8,8 +13,13 @@ import { Employee, EmployeeListResponse, ManagerTeamOverviewResponse, EmployeeFe
  * This eliminates the three duplicate 42-second `/api/employees` calls that
  * were happening when the Leave page loaded through the Dashboard layout.
  */
+type TimedPromise<T> = { promise: Promise<T>; startedAt: number };
 const employeesResultCache = new Map<string, EmployeeListResponse>();
-const employeesPromiseCache = new Map<string, Promise<EmployeeListResponse>>();
+const employeesPromiseCache = new Map<
+  string,
+  TimedPromise<EmployeeListResponse>
+>();
+const INFLIGHT_TTL_MS = 10000; // 10s safety to avoid stale promises after Fast Refresh/runtime errors
 
 interface UseEmployeesOptions {
   immediate?: boolean;
@@ -25,24 +35,57 @@ interface EmployeeFilters {
   search?: string;
 }
 
-export function useEmployees(filters: EmployeeFilters = {}, options: UseEmployeesOptions = {}) {
+/** 🔧 Helper to build a stable endpoint string from filters */
+const buildEmployeesEndpoint = (f: EmployeeFilters) => {
+  const qp = new URLSearchParams();
+  if (f.skip !== undefined) qp.append("skip", String(f.skip));
+  if (f.limit !== undefined) qp.append("limit", String(f.limit));
+  if (f.team_id !== undefined) qp.append("team_id", String(f.team_id));
+  if (f.department_id !== undefined)
+    qp.append("department_id", String(f.department_id));
+  if (f.search) qp.append("search", f.search);
+  return `/employees/?${qp.toString()}`;
+};
+
+export function useEmployees(
+  filters: EmployeeFilters = {},
+  options: UseEmployeesOptions = {}
+) {
   const [data, setData] = useState<EmployeeListResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+
+  // ✅ keep a single "already handled this endpoint" guard
   const hasFetched = useRef(false);
   const fetchCount = useRef(0);
-  const isMounted = useRef(true);
+
+  // ✅ used only to prevent setState after unmount/replace (StrictMode-safe)
+  const abortedRef = useRef(false);
 
   const { immediate = true, onSuccess, onError } = options;
 
   // Memoize the filters object to prevent unnecessary re-renders
-  const memoizedFilters = useMemo(() => filters, [
-    filters.skip,
-    filters.limit,
-    filters.team_id,
-    filters.department_id,
-    filters.search
-  ]);
+  const memoizedFilters = useMemo(
+    () => filters,
+    [
+      filters.skip,
+      filters.limit,
+      filters.team_id,
+      filters.department_id,
+      filters.search,
+    ]
+  );
+
+  // ✅ computed endpoint from filters (stable key for caches/guards)
+  const endpoint = useMemo(
+    () => buildEmployeesEndpoint(memoizedFilters),
+    [memoizedFilters]
+  );
+
+  // ✅ Reset the guard whenever the endpoint changes (new filters => new fetch)
+  useEffect(() => {
+    hasFetched.current = false;
+  }, [endpoint]);
 
   // Memoize the callbacks to prevent unnecessary re-renders
   const memoizedOnSuccess = useCallback(onSuccess || (() => {}), []);
@@ -50,37 +93,27 @@ export function useEmployees(filters: EmployeeFilters = {}, options: UseEmployee
 
   const fetchEmployees = useCallback(async () => {
     fetchCount.current += 1;
-    console.log(`🔄 useEmployees fetch #${fetchCount.current}`, { 
-      filters: memoizedFilters, 
+    console.log(`🔄 useEmployees fetch #${fetchCount.current}`, {
+      endpoint,
       hasFetched: hasFetched.current,
       immediate,
-      isMounted: isMounted.current
     });
-    
-    if (hasFetched.current || !isMounted.current) {
-      console.log('⏭️ Skipping fetch - already fetched or component unmounted');
+
+    // Only skip when we truly have fetched for THIS endpoint already
+    if (hasFetched.current) {
+      console.log("⏭️ Skipping fetch - already fetched for this endpoint");
       return;
     }
-    
+
     setLoading(true);
     setError(null);
 
     try {
-      const queryParams = new URLSearchParams();
-      if (memoizedFilters.skip !== undefined) queryParams.append('skip', memoizedFilters.skip.toString());
-      if (memoizedFilters.limit !== undefined) queryParams.append('limit', memoizedFilters.limit.toString());
-      if (memoizedFilters.team_id !== undefined) queryParams.append('team_id', memoizedFilters.team_id.toString());
-      if (memoizedFilters.department_id !== undefined) queryParams.append('department_id', memoizedFilters.department_id.toString());
-      if (memoizedFilters.search) queryParams.append('search', memoizedFilters.search);
-
-      const endpoint = `/employees/?${queryParams.toString()}`;
-      console.log('Fetching employees from:', endpoint);
-
       // 1) serve from cache if already fetched
       if (employeesResultCache.has(endpoint)) {
-        console.log('✅ Employees served from cache');
+        console.log("✅ Employees served from cache");
         const cached = employeesResultCache.get(endpoint)!;
-        if (isMounted.current) {
+        if (!abortedRef.current) {
           setData(cached);
           memoizedOnSuccess(cached);
           hasFetched.current = true;
@@ -89,64 +122,85 @@ export function useEmployees(filters: EmployeeFilters = {}, options: UseEmployee
         return;
       }
 
-      // 2) if a request is already in-flight for this endpoint, wait for it
+      // 2) if a request is already in-flight for this endpoint, wait for it — unless it went stale
+      const timed = employeesPromiseCache.get(endpoint);
+      const now = Date.now();
       let requestPromise: Promise<EmployeeListResponse>;
-      if (employeesPromiseCache.has(endpoint)) {
-        console.log('⏳ Waiting for ongoing employees request');
-        requestPromise = employeesPromiseCache.get(endpoint)!;
+
+      if (timed && now - timed.startedAt < INFLIGHT_TTL_MS) {
+        console.log("⏳ Waiting for ongoing employees request", endpoint);
+        requestPromise = timed.promise;
       } else {
-        console.log('🌐 Sending employees request to API');
+        if (timed) {
+          console.warn(
+            "⏱️ Stale employees request detected — refetching",
+            endpoint
+          );
+          employeesPromiseCache.delete(endpoint);
+        }
+        console.log("🌐 Sending employees request to API", endpoint);
         requestPromise = api.get<EmployeeListResponse>(endpoint);
-        employeesPromiseCache.set(endpoint, requestPromise);
+        employeesPromiseCache.set(endpoint, {
+          promise: requestPromise,
+          startedAt: now,
+        });
       }
 
       const result = await requestPromise;
       employeesResultCache.set(endpoint, result); // store final response
       employeesPromiseCache.delete(endpoint);
-      console.log('Employees response:', result);
-      
-      // Only update state if component is still mounted
-      if (isMounted.current) {
+
+      if (!abortedRef.current) {
         setData(result);
         memoizedOnSuccess(result);
         hasFetched.current = true;
       }
     } catch (err) {
-      console.error('Error fetching employees:', err);
-      const error = err instanceof Error ? err : new Error('Failed to fetch employees');
-      
-      // Only update state if component is still mounted
-      if (isMounted.current) {
-        setError(error);
-        memoizedOnError(error);
+      console.error("Error fetching employees:", err);
+      const e =
+        err instanceof Error ? err : new Error("Failed to fetch employees");
+      if (!abortedRef.current) {
+        setError(e);
+        memoizedOnError(e);
       }
     } finally {
-      // Only update loading state if component is still mounted
-      if (isMounted.current) {
-        setLoading(false);
-      }
+      if (!abortedRef.current) setLoading(false);
     }
-  }, [memoizedFilters, memoizedOnSuccess, memoizedOnError]);
+  }, [endpoint, immediate, memoizedOnSuccess, memoizedOnError]);
 
   const refetch = useCallback(() => {
-    console.log('🔄 Manual refetch requested');
+    console.log("🔄 Manual refetch requested");
     hasFetched.current = false;
     fetchEmployees();
   }, [fetchEmployees]);
 
   useEffect(() => {
-    console.log('🔄 useEmployees useEffect triggered', { immediate, hasFetched: hasFetched.current });
-    if (immediate) {
-      fetchEmployees();
-    }
-  }, [immediate, fetchEmployees]);
+    console.log("🔄 useEmployees useEffect triggered", {
+      immediate,
+      hasFetched: hasFetched.current,
+      endpoint,
+    });
 
-  // Cleanup on unmount
-  useEffect(() => {
+    if (!immediate) return;
+
+    abortedRef.current = false;
+    fetchEmployees();
+
+    // StrictMode cleanup guard (prevents setState after unmount)
     return () => {
-      isMounted.current = false;
+      abortedRef.current = true;
     };
-  }, []);
+  }, [immediate, endpoint, fetchEmployees]);
+
+  // Dev helper to recover after a bad HMR state
+  if (typeof window !== "undefined") {
+    // @ts-ignore
+    (window as any).__clearEmployeesCaches = () => {
+      employeesResultCache.clear();
+      employeesPromiseCache.clear();
+      console.log("🧹 Cleared employees caches");
+    };
+  }
 
   return {
     data,
@@ -168,11 +222,14 @@ export function useCurrentEmployee(options: UseEmployeesOptions = {}) {
     setError(null);
 
     try {
-      const result = await api.get<Employee>('/employees/profile/current');
+      const result = await api.get<Employee>("/employees/profile/current");
       setData(result);
       onSuccess?.(result);
     } catch (err) {
-      const error = err instanceof Error ? err : new Error('Failed to fetch current employee');
+      const error =
+        err instanceof Error
+          ? err
+          : new Error("Failed to fetch current employee");
       setError(error);
       onError?.(error);
     } finally {
@@ -210,11 +267,14 @@ export function useManagerTeamOverview(options: UseEmployeesOptions = {}) {
     setError(null);
 
     try {
-      const result = await api.get<ManagerTeamOverviewResponse>('/employees/manager/team-overview');
+      const result = await api.get<ManagerTeamOverviewResponse>(
+        "/employees/manager/team-overview"
+      );
       setData(result);
       onSuccess?.(result);
     } catch (err) {
-      const error = err instanceof Error ? err : new Error('Failed to fetch team overview');
+      const error =
+        err instanceof Error ? err : new Error("Failed to fetch team overview");
       setError(error);
       onError?.(error);
     } finally {
@@ -252,11 +312,16 @@ export function useFeedbackTargets(options: UseEmployeesOptions = {}) {
     setError(null);
 
     try {
-      const result = await api.get<EmployeeFeedbackTargetResponse[]>('/employees/feedback-targets');
+      const result = await api.get<EmployeeFeedbackTargetResponse[]>(
+        "/employees/feedback-targets"
+      );
       setData(result);
       onSuccess?.(result);
     } catch (err) {
-      const error = err instanceof Error ? err : new Error('Failed to fetch feedback targets');
+      const error =
+        err instanceof Error
+          ? err
+          : new Error("Failed to fetch feedback targets");
       setError(error);
       onError?.(error);
     } finally {
@@ -295,17 +360,24 @@ export function useCurrentEmployeeHierarchy(options: UseEmployeesOptions = {}) {
 
     try {
       // First get current employee to get their ID
-      const currentEmployee = await api.get<Employee>('/employees/profile/current');
+      const currentEmployee = await api.get<Employee>(
+        "/employees/profile/current"
+      );
       if (!currentEmployee) {
-        throw new Error('Current employee not found');
+        throw new Error("Current employee not found");
       }
 
       // Then get their hierarchy
-      const result = await api.get<Employee[]>(`/employees/${currentEmployee.EmployeeID}/hierarchy`);
+      const result = await api.get<Employee[]>(
+        `/employees/${currentEmployee.EmployeeID}/hierarchy`
+      );
       setData(result);
       onSuccess?.(result);
     } catch (err) {
-      const error = err instanceof Error ? err : new Error('Failed to fetch employee hierarchy');
+      const error =
+        err instanceof Error
+          ? err
+          : new Error("Failed to fetch employee hierarchy");
       setError(error);
       onError?.(error);
     } finally {
@@ -329,4 +401,4 @@ export function useCurrentEmployeeHierarchy(options: UseEmployeesOptions = {}) {
     error,
     refetch,
   };
-} 
+}

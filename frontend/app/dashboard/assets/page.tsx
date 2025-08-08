@@ -7,4 +7,4 @@ function AssetsContent() {
   return <AssetManagement />
 }
 
-export default withRBAC(AssetsContent, ["it"]) 
+export default withRBAC(AssetsContent, ["it"]); 

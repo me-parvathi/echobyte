@@ -38,13 +38,13 @@ function DashboardLayoutContent({ children }: DashboardLayoutProps) {
       { id: "profile", label: "Profile", icon: User },
       { id: "quick-actions", label: "Quick Actions", icon: Zap },
       { id: "settings", label: "Settings", icon: Settings },
-    ]
+    ];
 
     const managerItems = [
       ...baseItems,
       { id: "approvals", label: "Approvals", icon: CheckSquare },
-      { id: "reports", label: "Team Reports", icon: BarChart3 },
-    ]
+      { id: "analytics", label: "Analytics", icon: BarChart3 },
+    ];
 
     const hrItems = [
       ...managerItems,
@@ -52,27 +52,26 @@ function DashboardLayoutContent({ children }: DashboardLayoutProps) {
       { id: "onboarding", label: "Onboarding", icon: UserPlus },
       { id: "policies", label: "Policies", icon: FileText },
       { id: "analytics", label: "Analytics", icon: BarChart3 },
-    ]
+    ];
 
     const itItems = [
       ...baseItems,
       { id: "it-tickets", label: "IT Tickets", icon: TicketIcon },
       { id: "assets", label: "Assets", icon: HardDrive },
       { id: "security", label: "Security", icon: Shield },
-      { id: "infrastructure", label: "Infrastructure", icon: Server },
     ]
 
     switch (userType) {
       case "employee":
-        return baseItems
+        return baseItems;
       case "manager":
-        return managerItems
+        return managerItems;
       case "hr":
-        return hrItems
+        return hrItems;
       case "it":
-        return itItems
+        return itItems;
       default:
-        return baseItems
+        return baseItems;
     }
   }
 

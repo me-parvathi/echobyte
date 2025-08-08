@@ -434,15 +434,7 @@ export default function EmployeeProfile({ userInfo }: EmployeeProfileProps) {
                     Change
                   </Button>
                 </div>
-                <div className="flex items-center justify-between p-3 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
-                  <div>
-                    <p className="font-medium text-orange-800 dark:text-orange-400">Login Sessions</p>
-                    <p className="text-sm text-orange-600 dark:text-orange-500">3 active sessions</p>
-                  </div>
-                  <Button variant="outline" size="sm">
-                    Manage
-                  </Button>
-                </div>
+                
               </CardContent>
             </Card>
 

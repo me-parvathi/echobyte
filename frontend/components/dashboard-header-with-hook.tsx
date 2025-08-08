@@ -1,11 +1,12 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { useTheme } from "next-themes"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { useState, useEffect } from "react";
+import { useTheme } from "next-themes";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,8 +14,12 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+} from "@/components/ui/dropdown-menu";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Search,
   Bell,
@@ -31,34 +36,37 @@ import {
   Building2,
   Loader2,
   RefreshCw,
-} from "lucide-react"
-import { useProfilePicture } from "@/hooks/use-profile-picture"
-import { useNotifications } from "@/hooks/use-notifications"
-import { formatDistanceToNow } from "date-fns"
+} from "lucide-react";
+import { useProfilePicture } from "@/hooks/use-profile-picture";
+import { useNotifications } from "@/hooks/use-notifications";
+import { formatDistanceToNow } from "date-fns";
 
 interface UserInfo {
-  email: string
-  name: string
-  department: string
-  type: string
-  employeeId?: string
+  email: string;
+  name: string;
+  department: string;
+  type: string;
+  employeeId?: string;
 }
 
 interface DashboardHeaderProps {
-  userInfo: UserInfo
-  onSettingsClick?: () => void
+  userInfo: UserInfo;
+  onSettingsClick?: () => void;
 }
 
-export default function DashboardHeader({ userInfo, onSettingsClick }: DashboardHeaderProps) {
-  const { theme, setTheme } = useTheme()
-  const [currentTime, setCurrentTime] = useState(new Date())
-  const [searchQuery, setSearchQuery] = useState("")
-  
+export default function DashboardHeader({
+  userInfo,
+  onSettingsClick,
+}: DashboardHeaderProps) {
+  const { theme, setTheme } = useTheme();
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [searchQuery, setSearchQuery] = useState("");
+
   // Get employee ID for profile picture fetching
-  const employeeId = userInfo.employeeId ? parseInt(userInfo.employeeId) : 1
-  
+  const employeeId = userInfo.employeeId ? parseInt(userInfo.employeeId) : 1;
+
   // Fetch profile picture
-  const { pictureUrl } = useProfilePicture(employeeId)
+  const { pictureUrl } = useProfilePicture(employeeId);
 
   // Use the notifications hook
   const {
@@ -76,16 +84,16 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
     pollInterval: 30000, // 30 seconds
     initialLimit: 10,
     loadMoreLimit: 10,
-  })
+  });
 
   // Update current time
   useEffect(() => {
     const timer = setInterval(() => {
-      setCurrentTime(new Date())
-    }, 1000)
+      setCurrentTime(new Date());
+    }, 1000);
 
-    return () => clearInterval(timer)
-  }, [])
+    return () => clearInterval(timer);
+  }, []);
 
   const getInitials = (name: string) => {
     return name
@@ -93,108 +101,111 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
       .map((n) => n[0])
       .join("")
       .toUpperCase()
-      .slice(0, 2)
-  }
+      .slice(0, 2);
+  };
 
   const getRoleColor = (type: string) => {
     switch (type.toLowerCase()) {
       case "hr":
-        return "from-purple-500 to-purple-600"
+        return "from-purple-500 to-purple-600";
       case "manager":
-        return "from-blue-500 to-blue-600"
+        return "from-blue-500 to-blue-600";
       case "employee":
-        return "from-green-500 to-green-600"
+        return "from-green-500 to-green-600";
       case "admin":
-        return "from-red-500 to-red-600"
+        return "from-red-500 to-red-600";
       default:
-        return "from-gray-500 to-gray-600"
+        return "from-gray-500 to-gray-600";
     }
-  }
+  };
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString("en-US", {
       hour: "2-digit",
       minute: "2-digit",
       hour12: true,
-    })
-  }
+    });
+  };
 
   const formatDate = (date: Date) => {
     return date.toLocaleDateString("en-US", {
       weekday: "short",
       month: "short",
       day: "numeric",
-    })
-  }
+    });
+  };
 
   const formatNotificationTime = (dateString: string) => {
     try {
-      const date = new Date(dateString)
-      return formatDistanceToNow(date, { addSuffix: true })
+      const date = new Date(dateString);
+      return formatDistanceToNow(date, { addSuffix: true });
     } catch {
-      return "Unknown time"
+      return "Unknown time";
     }
-  }
+  };
 
   const getNotificationIcon = (type: string) => {
     switch (type.toLowerCase()) {
       case "leave":
-        return Calendar
+        return Calendar;
       case "timesheet":
-        return Clock
+        return Clock;
       case "meeting":
-        return Calendar
+        return Calendar;
       case "system":
-        return AlertTriangle
+        return AlertTriangle;
       case "approval":
-        return CheckCircle
+        return CheckCircle;
       default:
-        return Bell
+        return Bell;
     }
-  }
+  };
 
   const getNotificationColor = (type: string, priority: string) => {
-    if (priority === "urgent") return "text-red-600"
-    if (priority === "high") return "text-orange-600"
-    
+    if (priority === "urgent") return "text-red-600";
+    if (priority === "high") return "text-orange-600";
+
     switch (type.toLowerCase()) {
       case "leave":
-        return "text-green-600"
+        return "text-green-600";
       case "timesheet":
-        return "text-blue-600"
+        return "text-blue-600";
       case "meeting":
-        return "text-purple-600"
+        return "text-purple-600";
       case "system":
-        return "text-orange-600"
+        return "text-orange-600";
       case "approval":
-        return "text-green-600"
+        return "text-green-600";
       default:
-        return "text-gray-600"
+        return "text-gray-600";
     }
-  }
+  };
 
   const handleMarkAsRead = async (notificationId: string) => {
-    await markAsRead(notificationId)
-  }
+    await markAsRead(notificationId);
+  };
 
   const handleLogout = () => {
-    localStorage.removeItem("userType")
-    localStorage.removeItem("userEmail")
-    localStorage.removeItem("userName")
-    localStorage.removeItem("userDepartment")
-    localStorage.removeItem("userReportsTo")
-    localStorage.removeItem("userManagerName")
-    localStorage.removeItem("userEmployeeId")
-    localStorage.removeItem("userPosition")
-    localStorage.removeItem("userJoinDate")
-    window.location.href = "/"
-  }
+    localStorage.removeItem("userType");
+    localStorage.removeItem("userEmail");
+    localStorage.removeItem("userName");
+    localStorage.removeItem("userDepartment");
+    localStorage.removeItem("userReportsTo");
+    localStorage.removeItem("userManagerName");
+    localStorage.removeItem("userEmployeeId");
+    localStorage.removeItem("userPosition");
+    localStorage.removeItem("userJoinDate");
+    window.location.href = "/";
+  };
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-orange-200/50 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl">
       <div className="flex h-16 items-center justify-between px-6">
-        {/* Left Section - Company Logo & Time */}
+        {/* Left Section - Hamburger + Company Logo & Time */}
         <div className="flex items-center gap-6">
+          {/* Built-in trigger shows a menu icon and toggles the sidebar */}
+          <SidebarTrigger className="mr-1 shrink-0" />
+
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-gradient-to-r from-orange-500 to-amber-500 rounded-lg flex items-center justify-center shadow-lg">
               <Building2 className="w-4 h-4 text-white" />
@@ -203,15 +214,21 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
               <h1 className="text-lg font-bold bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">
                 EchoByte
               </h1>
-              <p className="text-xs text-gray-600 dark:text-gray-400">Employee Portal</p>
+              <p className="text-xs text-gray-600 dark:text-gray-400">
+                Employee Portal
+              </p>
             </div>
           </div>
 
           <div className="hidden md:flex items-center gap-4 px-4 py-2 bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-900/20 dark:to-amber-900/20 rounded-xl border border-orange-200/50 dark:border-orange-800/50">
             <Clock className="w-4 h-4 text-orange-600 dark:text-orange-400" />
             <div className="text-sm">
-              <div className="font-mono font-medium text-gray-900 dark:text-white">{formatTime(currentTime)}</div>
-              <div className="text-xs text-gray-600 dark:text-gray-400">{formatDate(currentTime)}</div>
+              <div className="font-mono font-medium text-gray-900 dark:text-white">
+                {formatTime(currentTime)}
+              </div>
+              <div className="text-xs text-gray-600 dark:text-gray-400">
+                {formatDate(currentTime)}
+              </div>
             </div>
           </div>
         </div>
@@ -251,7 +268,9 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
             <PopoverContent className="w-80 p-0" align="end">
               <div className="p-4 border-b border-gray-200 dark:border-gray-700">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-gray-900 dark:text-white">Notifications</h3>
+                  <h3 className="font-semibold text-gray-900 dark:text-white">
+                    Notifications
+                  </h3>
                   <div className="flex items-center gap-2">
                     {loading && <Loader2 className="w-4 h-4 animate-spin" />}
                     <Badge variant="secondary">{unreadCount} new</Badge>
@@ -271,7 +290,9 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
               {error && (
                 <div className="p-4 border-b border-red-200 bg-red-50 dark:bg-red-900/10">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+                    <p className="text-sm text-red-600 dark:text-red-400">
+                      {error}
+                    </p>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -288,23 +309,32 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
                 {notifications.length === 0 && !loading ? (
                   <div className="p-8 text-center">
                     <Bell className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                    <p className="text-sm text-gray-500 dark:text-gray-400">No notifications</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      No notifications
+                    </p>
                   </div>
                 ) : (
                   notifications.map((notification) => {
-                    const Icon = getNotificationIcon(notification.type)
-                    const color = getNotificationColor(notification.type, notification.priority)
-                    
+                    const Icon = getNotificationIcon(notification.type);
+                    const color = getNotificationColor(
+                      notification.type,
+                      notification.priority
+                    );
+
                     return (
                       <div
                         key={notification.id}
                         className={`p-4 border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer transition-colors ${
-                          !notification.is_read ? "bg-orange-50/50 dark:bg-orange-900/10" : ""
+                          !notification.is_read
+                            ? "bg-orange-50/50 dark:bg-orange-900/10"
+                            : ""
                         }`}
                         onClick={() => handleMarkAsRead(notification.id)}
                       >
                         <div className="flex items-start gap-3">
-                          <div className={`p-1.5 rounded-lg bg-white dark:bg-gray-700 shadow-sm`}>
+                          <div
+                            className={`p-1.5 rounded-lg bg-white dark:bg-gray-700 shadow-sm`}
+                          >
                             <Icon className={`w-4 h-4 ${color}`} />
                           </div>
                           <div className="flex-1 min-w-0">
@@ -321,15 +351,19 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
                             </p>
                             <div className="flex items-center gap-2">
                               <p className="text-xs text-gray-500 dark:text-gray-500">
-                                {formatNotificationTime(notification.created_at)}
+                                {formatNotificationTime(
+                                  notification.created_at
+                                )}
                               </p>
                               {notification.priority !== "normal" && (
-                                <Badge 
-                                  variant="outline" 
+                                <Badge
+                                  variant="outline"
                                   className={`text-xs ${
-                                    notification.priority === "urgent" ? "border-red-300 text-red-600" :
-                                    notification.priority === "high" ? "border-orange-300 text-orange-600" :
-                                    "border-blue-300 text-blue-600"
+                                    notification.priority === "urgent"
+                                      ? "border-red-300 text-red-600"
+                                      : notification.priority === "high"
+                                      ? "border-orange-300 text-orange-600"
+                                      : "border-blue-300 text-blue-600"
                                   }`}
                                 >
                                   {notification.priority}
@@ -339,7 +373,7 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
                           </div>
                         </div>
                       </div>
-                    )
+                    );
                   })
                 )}
               </div>
@@ -367,7 +401,11 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
               )}
 
               <div className="p-3 border-t border-gray-200 dark:border-gray-700">
-                <Button variant="ghost" size="sm" className="w-full text-orange-600 dark:text-orange-400">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-orange-600 dark:text-orange-400"
+                >
                   View all notifications
                 </Button>
               </div>
@@ -396,19 +434,25 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
               <DropdownMenuItem onClick={() => setTheme("light")}>
                 <Sun className="w-4 h-4 mr-2" />
                 Light
-                {theme === "light" && <CheckCircle className="w-4 h-4 ml-auto text-green-600" />}
+                {theme === "light" && (
+                  <CheckCircle className="w-4 h-4 ml-auto text-green-600" />
+                )}
               </DropdownMenuItem>
 
               <DropdownMenuItem onClick={() => setTheme("dark")}>
                 <Moon className="w-4 h-4 mr-2" />
                 Dark
-                {theme === "dark" && <CheckCircle className="w-4 h-4 ml-auto text-green-600" />}
+                {theme === "dark" && (
+                  <CheckCircle className="w-4 h-4 ml-auto text-green-600" />
+                )}
               </DropdownMenuItem>
 
               <DropdownMenuItem onClick={() => setTheme("system")}>
                 <Monitor className="w-4 h-4 mr-2" />
                 System
-                {theme === "system" && <CheckCircle className="w-4 h-4 ml-auto text-green-600" />}
+                {theme === "system" && (
+                  <CheckCircle className="w-4 h-4 ml-auto text-green-600" />
+                )}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -416,12 +460,19 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
           {/* User Profile */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="relative h-10 w-10 rounded-full">
+              <Button
+                variant="ghost"
+                className="relative h-10 w-10 rounded-full"
+              >
                 <Avatar className="h-10 w-10 ring-2 ring-orange-200 dark:ring-orange-800">
                   {pictureUrl && (
                     <AvatarImage src={pictureUrl} alt={userInfo.name} />
                   )}
-                  <AvatarFallback className={`bg-gradient-to-r ${getRoleColor(userInfo.type)} text-white font-medium`}>
+                  <AvatarFallback
+                    className={`bg-gradient-to-r ${getRoleColor(
+                      userInfo.type
+                    )} text-white font-medium`}
+                  >
                     {getInitials(userInfo.name)}
                   </AvatarFallback>
                 </Avatar>
@@ -430,11 +481,20 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
             <DropdownMenuContent className="w-56" align="end" forceMount>
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium leading-none">{userInfo.name}</p>
-                  <p className="text-xs leading-none text-muted-foreground">{userInfo.email}</p>
+                  <p className="text-sm font-medium leading-none">
+                    {userInfo.name}
+                  </p>
+                  <p className="text-xs leading-none text-muted-foreground">
+                    {userInfo.email}
+                  </p>
                   <div className="flex items-center gap-2 mt-2">
-                    <Badge className={`bg-gradient-to-r ${getRoleColor(userInfo.type)} text-white border-0 text-xs`}>
-                      {userInfo.type.charAt(0).toUpperCase() + userInfo.type.slice(1)}
+                    <Badge
+                      className={`bg-gradient-to-r ${getRoleColor(
+                        userInfo.type
+                      )} text-white border-0 text-xs`}
+                    >
+                      {userInfo.type.charAt(0).toUpperCase() +
+                        userInfo.type.slice(1)}
                     </Badge>
                     <Badge variant="outline" className="text-xs">
                       {userInfo.department}
@@ -452,7 +512,10 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
                 Settings
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleLogout} className="text-red-600 dark:text-red-400">
+              <DropdownMenuItem
+                onClick={handleLogout}
+                className="text-red-600 dark:text-red-400"
+              >
                 <LogOut className="w-4 h-4 mr-2" />
                 Sign out
               </DropdownMenuItem>
@@ -461,5 +524,5 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
         </div>
       </div>
     </header>
-  )
-} 
+  );
+}

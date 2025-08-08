@@ -1,0 +1,81 @@
+# backend/api/hr/induction.py
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from typing import List
+import os
+import pyodbc
+
+router = APIRouter(prefix="/hr", tags=["HR Induction Docs"])
+
+class HRDoc(BaseModel):
+document_id: int
+title: str
+file_path: str
+document_type: str
+
+def get_connection():
+"""
+Create and return a pyodbc connection to SQL Server.
+Reads sensitive values from environment variables.
+"""
+host = os.getenv("DB_HOST", "echobyteserver.database.windows.net")
+port = os.getenv("DB_PORT", "1433")
+user = os.getenv("DB_USER")
+pwd = os.getenv("DB_PASS")
+db = os.getenv("DB_NAME")
+
+if not all([user, pwd, db]):
+raise RuntimeError(
+"Missing required DB env vars: DB_USER, DB_PASS, DB_NAME"
+)
+
+conn_str = (
+f"DRIVER={{ODBC Driver 18 for SQL Server}};"
+f"SERVER={host},{port};"
+f"DATABASE={db};UID={user};PWD={pwd};"
+"Encrypt=yes;TrustServerCertificate=no;Connection Timeout=5;"
+)
+return pyodbc.connect(conn_str)
+
+@router.get("/docs/{employee_id}", response_model=List[HRDoc])
+def get_hr_docs(employee_id: int):
+"""
+Returns HR documents for a specific employee.
+Includes common documents and those assigned directly to the employee.
+"""
+try:
+conn = get_connection()
+except Exception as e:
+raise HTTPException(status_code=500, detail=f"DB connection error: {e}")
+
+try:
+cursor = conn.cursor()
+cursor.execute("""
+SELECT DocumentID AS document_id, Title AS title, FilePath AS file_path, DocumentType AS document_type
+FROM HRDocuments
+WHERE IsCommonDocument = 1
+UNION
+SELECT d.DocumentID AS document_id, d.Title AS title, d.FilePath AS file_path, d.DocumentType AS document_type
+FROM HRDocuments d
+JOIN EmployeeDocuments ed ON d.DocumentID = ed.DocumentID
+WHERE ed.EmployeeID = ?
+""", (employee_id,))
+rows = cursor.fetchall()
+
+results = [
+HRDoc(
+document_id=row[0],
+title=row[1],
+file_path=row[2],
+document_type=row[3]
+)
+for row in rows
+]
+return results
+except Exception as e:
+raise HTTPException(status_code=500, detail=f"Query execution error: {e}")
+finally:
+conn.close()
+
+

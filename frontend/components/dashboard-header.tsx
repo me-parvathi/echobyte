@@ -1,11 +1,11 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { useTheme } from "next-themes"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { useState, useEffect } from "react";
+import { useTheme } from "next-themes";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,8 +13,12 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+} from "@/components/ui/dropdown-menu";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Search,
   Bell,
@@ -37,52 +41,60 @@ import {
   Smartphone,
   Volume2,
   X,
-} from "lucide-react"
-import { useProfilePicture } from "@/hooks/use-profile-picture"
-import { useNotifications } from "@/hooks/use-notifications"
-import { formatDistanceToNow } from "date-fns"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Switch } from "@/components/ui/switch"
-import { Label } from "@/components/ui/label"
-import { api } from "@/lib/api"
+} from "lucide-react";
+import { useProfilePicture } from "@/hooks/use-profile-picture";
+import { useNotifications } from "@/hooks/use-notifications";
+import { formatDistanceToNow } from "date-fns";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { api } from "@/lib/api";
 
 interface UserInfo {
-  email: string
-  name: string
-  department: string
-  type: string
-  employeeId?: string
+  email: string;
+  name: string;
+  department: string;
+  type: string;
+  employeeId?: string;
 }
 
 interface DashboardHeaderProps {
-  userInfo: UserInfo
-  onSettingsClick?: () => void
+  userInfo: UserInfo;
+  onSettingsClick?: () => void;
 }
 
 interface NotificationPreferences {
-  email_enabled: boolean
-  push_enabled: boolean
-  desktop_enabled: boolean
-  sound_enabled: boolean
-  quiet_hours_start?: string
-  quiet_hours_end?: string
-  timezone: string
-  preferences?: string
+  email_enabled: boolean;
+  push_enabled: boolean;
+  desktop_enabled: boolean;
+  sound_enabled: boolean;
+  quiet_hours_start?: string;
+  quiet_hours_end?: string;
+  timezone: string;
+  preferences?: string;
 }
 
-export default function DashboardHeader({ userInfo, onSettingsClick }: DashboardHeaderProps) {
-  const { theme, setTheme } = useTheme()
-  const [currentTime, setCurrentTime] = useState(new Date())
-  const [searchQuery, setSearchQuery] = useState("")
-  
+export default function DashboardHeader({
+  userInfo,
+  onSettingsClick,
+}: DashboardHeaderProps) {
+  const { theme, setTheme } = useTheme();
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [searchQuery, setSearchQuery] = useState("");
+
   // Get employee ID for profile picture fetching
-  const employeeId = userInfo.employeeId ? parseInt(userInfo.employeeId) : 1
-  
+  const employeeId = userInfo.employeeId ? parseInt(userInfo.employeeId) : 1;
+
   // Fetch profile picture
-  const { pictureUrl } = useProfilePicture(employeeId)
+  const { pictureUrl } = useProfilePicture(employeeId);
 
   // Track if notifications have been initially loaded
-  const [hasInitiallyLoaded, setHasInitiallyLoaded] = useState(false)
+  const [hasInitiallyLoaded, setHasInitiallyLoaded] = useState(false);
 
   // Use the notifications hook with enabled option to prevent premature fetching
   const {
@@ -101,57 +113,58 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
     initialLimit: 10,
     loadMoreLimit: 10,
     enabled: true, // This will be controlled by the auth state
-  })
+  });
 
   // Mark as initially loaded when first data fetch completes
   useEffect(() => {
     if (!loading && !hasInitiallyLoaded) {
-      setHasInitiallyLoaded(true)
+      setHasInitiallyLoaded(true);
     }
-  }, [loading, hasInitiallyLoaded])
+  }, [loading, hasInitiallyLoaded]);
 
   // Notification settings state
-  const [showNotificationSettings, setShowNotificationSettings] = useState(false)
+  const [showNotificationSettings, setShowNotificationSettings] =
+    useState(false);
   const [preferences, setPreferences] = useState<NotificationPreferences>({
     email_enabled: true,
     push_enabled: true,
     desktop_enabled: true,
     sound_enabled: true,
     timezone: "UTC",
-  })
-  const [preferencesLoading, setPreferencesLoading] = useState(false)
-  const [preferencesError, setPreferencesError] = useState<string | null>(null)
+  });
+  const [preferencesLoading, setPreferencesLoading] = useState(false);
+  const [preferencesError, setPreferencesError] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setCurrentTime(new Date())
-    }, 1000)
+      setCurrentTime(new Date());
+    }, 1000);
 
-    return () => clearInterval(timer)
-  }, [])
+    return () => clearInterval(timer);
+  }, []);
 
   const getInitials = (name: string) => {
     return name
       .split(" ")
       .map((n) => n[0])
       .join("")
-      .toUpperCase()
-  }
+      .toUpperCase();
+  };
 
   const getRoleColor = (type: string) => {
     switch (type) {
       case "employee":
-        return "from-orange-500 to-amber-500"
+        return "from-orange-500 to-amber-500";
       case "manager":
-        return "from-emerald-500 to-teal-500"
+        return "from-emerald-500 to-teal-500";
       case "hr":
-        return "from-purple-500 to-pink-500"
+        return "from-purple-500 to-pink-500";
       case "it":
-        return "from-blue-500 to-cyan-500"
+        return "from-blue-500 to-cyan-500";
       default:
-        return "from-gray-500 to-gray-600"
+        return "from-gray-500 to-gray-600";
     }
-  }
+  };
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString("en-US", {
@@ -159,8 +172,8 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
       minute: "2-digit",
       second: "2-digit",
       hour12: true,
-    })
-  }
+    });
+  };
 
   const formatDate = (date: Date) => {
     return date.toLocaleDateString("en-US", {
@@ -168,102 +181,112 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
       year: "numeric",
       month: "long",
       day: "numeric",
-    })
-  }
+    });
+  };
 
   // Helper functions for notification display
   const formatNotificationTime = (dateString: string) => {
     try {
-      const date = new Date(dateString)
-      return formatDistanceToNow(date, { addSuffix: true })
+      const date = new Date(dateString);
+      return formatDistanceToNow(date, { addSuffix: true });
     } catch {
-      return "Unknown time"
+      return "Unknown time";
     }
-  }
+  };
 
   const getNotificationIcon = (type: string) => {
     switch (type.toLowerCase()) {
       case "leave":
-        return Calendar
+        return Calendar;
       case "timesheet":
-        return Clock
+        return Clock;
       case "meeting":
-        return Calendar
+        return Calendar;
       case "system":
-        return AlertTriangle
+        return AlertTriangle;
       case "approval":
-        return CheckCircle
+        return CheckCircle;
       default:
-        return Bell
+        return Bell;
     }
-  }
+  };
 
   const getNotificationColor = (type: string, priority: string) => {
-    if (priority === "urgent") return "text-red-600"
-    if (priority === "high") return "text-orange-600"
-    
+    if (priority === "urgent") return "text-red-600";
+    if (priority === "high") return "text-orange-600";
+
     switch (type.toLowerCase()) {
       case "leave":
-        return "text-green-600"
+        return "text-green-600";
       case "timesheet":
-        return "text-blue-600"
+        return "text-blue-600";
       case "meeting":
-        return "text-purple-600"
+        return "text-purple-600";
       case "system":
-        return "text-orange-600"
+        return "text-orange-600";
       case "approval":
-        return "text-green-600"
+        return "text-green-600";
       default:
-        return "text-gray-600"
+        return "text-gray-600";
     }
-  }
+  };
 
   const handleMarkAsRead = async (notificationId: string) => {
-    await markAsRead(notificationId)
-  }
+    await markAsRead(notificationId);
+  };
 
   // Fetch notification preferences
   const fetchPreferences = async () => {
     try {
-      setPreferencesLoading(true)
-      setPreferencesError(null)
-      const response = await api.get<NotificationPreferences>('/api/notifications/preferences')
-      setPreferences(response)
+      setPreferencesLoading(true);
+      setPreferencesError(null);
+      const response = await api.get<NotificationPreferences>(
+        "/api/notifications/preferences"
+      );
+      setPreferences(response);
     } catch (error) {
-      setPreferencesError('Failed to load notification preferences')
-      console.error('Error fetching preferences:', error)
+      setPreferencesError("Failed to load notification preferences");
+      console.error("Error fetching preferences:", error);
     } finally {
-      setPreferencesLoading(false)
+      setPreferencesLoading(false);
     }
-  }
+  };
 
   // Update notification preferences
-  const updatePreferences = async (newPreferences: Partial<NotificationPreferences>) => {
+  const updatePreferences = async (
+    newPreferences: Partial<NotificationPreferences>
+  ) => {
     try {
-      setPreferencesLoading(true)
-      setPreferencesError(null)
-      const response = await api.put<NotificationPreferences>('/api/notifications/preferences', newPreferences)
-      setPreferences(response)
+      setPreferencesLoading(true);
+      setPreferencesError(null);
+      const response = await api.put<NotificationPreferences>(
+        "/api/notifications/preferences",
+        newPreferences
+      );
+      setPreferences(response);
     } catch (error) {
-      setPreferencesError('Failed to update notification preferences')
-      console.error('Error updating preferences:', error)
+      setPreferencesError("Failed to update notification preferences");
+      console.error("Error updating preferences:", error);
     } finally {
-      setPreferencesLoading(false)
+      setPreferencesLoading(false);
     }
-  }
+  };
 
   // Handle preference toggle
-  const handlePreferenceToggle = async (key: keyof NotificationPreferences, value: boolean) => {
-    const newPreferences = { ...preferences, [key]: value }
-    setPreferences(newPreferences) // Optimistic update
-    await updatePreferences({ [key]: value })
-  }
+  const handlePreferenceToggle = async (
+    key: keyof NotificationPreferences,
+    value: boolean
+  ) => {
+    const newPreferences = { ...preferences, [key]: value };
+    setPreferences(newPreferences); // Optimistic update
+    await updatePreferences({ [key]: value });
+  };
 
   // Open notification settings
   const handleOpenNotificationSettings = async () => {
-    setShowNotificationSettings(true)
-    await fetchPreferences()
-  }
+    setShowNotificationSettings(true);
+    await fetchPreferences();
+  };
 
   // Skeleton loading component for notifications
   const NotificationSkeleton = () => (
@@ -277,7 +300,7 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
         </div>
       </div>
     </div>
-  )
+  );
 
   // Empty state component
   const EmptyState = () => (
@@ -301,7 +324,7 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
         Check for updates
       </Button>
     </div>
-  )
+  );
 
   // Error state component
   const ErrorState = () => (
@@ -335,20 +358,20 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
         </Button>
       </div>
     </div>
-  )
+  );
 
   const handleLogout = () => {
-    localStorage.removeItem("userType")
-    localStorage.removeItem("userEmail")
-    localStorage.removeItem("userName")
-    localStorage.removeItem("userDepartment")
-    localStorage.removeItem("userReportsTo")
-    localStorage.removeItem("userManagerName")
-    localStorage.removeItem("userEmployeeId")
-    localStorage.removeItem("userPosition")
-    localStorage.removeItem("userJoinDate")
-    window.location.href = "/"
-  }
+    localStorage.removeItem("userType");
+    localStorage.removeItem("userEmail");
+    localStorage.removeItem("userName");
+    localStorage.removeItem("userDepartment");
+    localStorage.removeItem("userReportsTo");
+    localStorage.removeItem("userManagerName");
+    localStorage.removeItem("userEmployeeId");
+    localStorage.removeItem("userPosition");
+    localStorage.removeItem("userJoinDate");
+    window.location.href = "/";
+  };
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-orange-200/50 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl">
@@ -363,15 +386,21 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
               <h1 className="text-lg font-bold bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">
                 EchoByte
               </h1>
-              <p className="text-xs text-gray-600 dark:text-gray-400">Employee Portal</p>
+              <p className="text-xs text-gray-600 dark:text-gray-400">
+                Employee Portal
+              </p>
             </div>
           </div>
 
           <div className="hidden md:flex items-center gap-4 px-4 py-2 bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-900/20 dark:to-amber-900/20 rounded-xl border border-orange-200/50 dark:border-orange-800/50">
             <Clock className="w-4 h-4 text-orange-600 dark:text-orange-400" />
             <div className="text-sm">
-              <div className="font-mono font-medium text-gray-900 dark:text-white">{formatTime(currentTime)}</div>
-              <div className="text-xs text-gray-600 dark:text-gray-400">{formatDate(currentTime)}</div>
+              <div className="font-mono font-medium text-gray-900 dark:text-white">
+                {formatTime(currentTime)}
+              </div>
+              <div className="text-xs text-gray-600 dark:text-gray-400">
+                {formatDate(currentTime)}
+              </div>
             </div>
           </div>
         </div>
@@ -411,12 +440,20 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
             <PopoverContent className="w-80 p-0" align="end">
               <div className="p-4 border-b border-gray-200 dark:border-gray-700">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-gray-900 dark:text-white">Notifications</h3>
+                  <h3 className="font-semibold text-gray-900 dark:text-white">
+                    Notifications
+                  </h3>
                   <div className="flex items-center gap-2">
-                    {loading && !hasInitiallyLoaded && <Loader2 className="w-4 h-4 animate-spin text-orange-500" />}
-                    <Badge 
-                      variant="secondary" 
-                      className={unreadCount > 0 ? "bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-300" : ""}
+                    {loading && !hasInitiallyLoaded && (
+                      <Loader2 className="w-4 h-4 animate-spin text-orange-500" />
+                    )}
+                    <Badge
+                      variant="secondary"
+                      className={
+                        unreadCount > 0
+                          ? "bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-300"
+                          : ""
+                      }
                     >
                       {unreadCount} new
                     </Badge>
@@ -428,7 +465,9 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
                       className="h-6 w-6 p-0 hover:bg-orange-50 dark:hover:bg-orange-900/20"
                       title="Refresh notifications"
                     >
-                      <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
+                      <RefreshCw
+                        className={`w-3 h-3 ${loading ? "animate-spin" : ""}`}
+                      />
                     </Button>
                   </div>
                 </div>
@@ -436,8 +475,10 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
 
               <div className="max-h-96 overflow-y-auto">
                 {/* Error State - Show full error state when API fails */}
-                {error && !loading && notifications.length === 0 && <ErrorState />}
-                
+                {error && !loading && notifications.length === 0 && (
+                  <ErrorState />
+                )}
+
                 {/* Loading State - Show skeleton only during initial load */}
                 {loading && !hasInitiallyLoaded && (
                   <div>
@@ -446,27 +487,37 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
                     ))}
                   </div>
                 )}
-                
+
                 {/* Empty State - Show when no notifications exist and not loading */}
-                {!loading && !error && notifications.length === 0 && hasInitiallyLoaded && <EmptyState />}
-                
+                {!loading &&
+                  !error &&
+                  notifications.length === 0 &&
+                  hasInitiallyLoaded && <EmptyState />}
+
                 {/* Notifications List - Show when data is available */}
                 {!loading && !error && notifications.length > 0 && (
                   <>
                     {notifications.map((notification) => {
-                      const Icon = getNotificationIcon(notification.type)
-                      const color = getNotificationColor(notification.type, notification.priority)
-                      
+                      const Icon = getNotificationIcon(notification.type);
+                      const color = getNotificationColor(
+                        notification.type,
+                        notification.priority
+                      );
+
                       return (
                         <div
                           key={notification.id}
                           className={`p-4 border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer transition-colors ${
-                            !notification.is_read ? "bg-orange-50/50 dark:bg-orange-900/10" : ""
+                            !notification.is_read
+                              ? "bg-orange-50/50 dark:bg-orange-900/10"
+                              : ""
                           }`}
                           onClick={() => handleMarkAsRead(notification.id)}
                         >
                           <div className="flex items-start gap-3">
-                            <div className={`p-1.5 rounded-lg bg-white dark:bg-gray-700 shadow-sm`}>
+                            <div
+                              className={`p-1.5 rounded-lg bg-white dark:bg-gray-700 shadow-sm`}
+                            >
                               <Icon className={`w-4 h-4 ${color}`} />
                             </div>
                             <div className="flex-1 min-w-0">
@@ -483,15 +534,19 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
                               </p>
                               <div className="flex items-center gap-2">
                                 <p className="text-xs text-gray-500 dark:text-gray-500">
-                                  {formatNotificationTime(notification.created_at)}
+                                  {formatNotificationTime(
+                                    notification.created_at
+                                  )}
                                 </p>
                                 {notification.priority !== "normal" && (
-                                  <Badge 
-                                    variant="outline" 
+                                  <Badge
+                                    variant="outline"
                                     className={`text-xs ${
-                                      notification.priority === "urgent" ? "border-red-300 text-red-600" :
-                                      notification.priority === "high" ? "border-orange-300 text-orange-600" :
-                                      "border-blue-300 text-blue-600"
+                                      notification.priority === "urgent"
+                                        ? "border-red-300 text-red-600"
+                                        : notification.priority === "high"
+                                        ? "border-orange-300 text-orange-600"
+                                        : "border-blue-300 text-blue-600"
                                     }`}
                                   >
                                     {notification.priority}
@@ -501,9 +556,9 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
                             </div>
                           </div>
                         </div>
-                      )
+                      );
                     })}
-                    
+
                     {/* Load More Button - Only show if more data exists */}
                     {hasMore && (
                       <div className="p-3 border-t border-gray-200 dark:border-gray-700">
@@ -530,7 +585,7 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
                     )}
                   </>
                 )}
-                
+
                 {/* Partial Error State - Show when there's an error but some data exists */}
                 {error && notifications.length > 0 && (
                   <div className="p-3 border-t border-red-200 bg-red-50 dark:bg-red-900/10">
@@ -554,7 +609,11 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
                 )}
               </div>
               <div className="p-3 border-t border-gray-200 dark:border-gray-700">
-                <Button variant="ghost" size="sm" className="w-full text-orange-600 dark:text-orange-400">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-orange-600 dark:text-orange-400"
+                >
                   View all notifications
                 </Button>
               </div>
@@ -588,19 +647,25 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
               <DropdownMenuItem onClick={() => setTheme("light")}>
                 <Sun className="w-4 h-4 mr-2" />
                 Light
-                {theme === "light" && <CheckCircle className="w-4 h-4 ml-auto text-green-600" />}
+                {theme === "light" && (
+                  <CheckCircle className="w-4 h-4 ml-auto text-green-600" />
+                )}
               </DropdownMenuItem>
 
               <DropdownMenuItem onClick={() => setTheme("dark")}>
                 <Moon className="w-4 h-4 mr-2" />
                 Dark
-                {theme === "dark" && <CheckCircle className="w-4 h-4 ml-auto text-green-600" />}
+                {theme === "dark" && (
+                  <CheckCircle className="w-4 h-4 ml-auto text-green-600" />
+                )}
               </DropdownMenuItem>
 
               <DropdownMenuItem onClick={() => setTheme("system")}>
                 <Monitor className="w-4 h-4 mr-2" />
                 System
-                {theme === "system" && <CheckCircle className="w-4 h-4 ml-auto text-green-600" />}
+                {theme === "system" && (
+                  <CheckCircle className="w-4 h-4 ml-auto text-green-600" />
+                )}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -608,12 +673,19 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
           {/* User Profile */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="relative h-10 w-10 rounded-full">
+              <Button
+                variant="ghost"
+                className="relative h-10 w-10 rounded-full"
+              >
                 <Avatar className="h-10 w-10 ring-2 ring-orange-200 dark:ring-orange-800">
                   {pictureUrl && (
                     <AvatarImage src={pictureUrl} alt={userInfo.name} />
                   )}
-                  <AvatarFallback className={`bg-gradient-to-r ${getRoleColor(userInfo.type)} text-white font-medium`}>
+                  <AvatarFallback
+                    className={`bg-gradient-to-r ${getRoleColor(
+                      userInfo.type
+                    )} text-white font-medium`}
+                  >
                     {getInitials(userInfo.name)}
                   </AvatarFallback>
                 </Avatar>
@@ -622,11 +694,20 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
             <DropdownMenuContent className="w-56" align="end" forceMount>
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium leading-none">{userInfo.name}</p>
-                  <p className="text-xs leading-none text-muted-foreground">{userInfo.email}</p>
+                  <p className="text-sm font-medium leading-none">
+                    {userInfo.name}
+                  </p>
+                  <p className="text-xs leading-none text-muted-foreground">
+                    {userInfo.email}
+                  </p>
                   <div className="flex items-center gap-2 mt-2">
-                    <Badge className={`bg-gradient-to-r ${getRoleColor(userInfo.type)} text-white border-0 text-xs`}>
-                      {userInfo.type.charAt(0).toUpperCase() + userInfo.type.slice(1)}
+                    <Badge
+                      className={`bg-gradient-to-r ${getRoleColor(
+                        userInfo.type
+                      )} text-white border-0 text-xs`}
+                    >
+                      {userInfo.type.charAt(0).toUpperCase() +
+                        userInfo.type.slice(1)}
                     </Badge>
                     <Badge variant="outline" className="text-xs">
                       {userInfo.department}
@@ -644,7 +725,10 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
                 Settings
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleLogout} className="text-red-600 dark:text-red-400">
+              <DropdownMenuItem
+                onClick={handleLogout}
+                className="text-red-600 dark:text-red-400"
+              >
                 <LogOut className="w-4 h-4 mr-2" />
                 Sign out
               </DropdownMenuItem>
@@ -654,7 +738,10 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
       </div>
 
       {/* Notification Settings Modal */}
-      <Dialog open={showNotificationSettings} onOpenChange={setShowNotificationSettings}>
+      <Dialog
+        open={showNotificationSettings}
+        onOpenChange={setShowNotificationSettings}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -662,13 +749,15 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
               Notification Settings
             </DialogTitle>
           </DialogHeader>
-          
+
           <div className="space-y-6">
             {preferencesError && (
               <div className="p-3 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg">
                 <div className="flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-red-500" />
-                  <p className="text-sm text-red-600 dark:text-red-400">{preferencesError}</p>
+                  <p className="text-sm text-red-600 dark:text-red-400">
+                    {preferencesError}
+                  </p>
                 </div>
               </div>
             )}
@@ -680,7 +769,10 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
                     <Mail className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                   </div>
                   <div>
-                    <Label htmlFor="email-notifications" className="text-sm font-medium">
+                    <Label
+                      htmlFor="email-notifications"
+                      className="text-sm font-medium"
+                    >
                       Email Notifications
                     </Label>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -691,7 +783,9 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
                 <Switch
                   id="email-notifications"
                   checked={preferences.email_enabled}
-                  onCheckedChange={(checked) => handlePreferenceToggle('email_enabled', checked)}
+                  onCheckedChange={(checked) =>
+                    handlePreferenceToggle("email_enabled", checked)
+                  }
                   disabled={preferencesLoading}
                 />
               </div>
@@ -702,7 +796,10 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
                     <Smartphone className="w-4 h-4 text-green-600 dark:text-green-400" />
                   </div>
                   <div>
-                    <Label htmlFor="push-notifications" className="text-sm font-medium">
+                    <Label
+                      htmlFor="push-notifications"
+                      className="text-sm font-medium"
+                    >
                       Push Notifications
                     </Label>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -713,7 +810,9 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
                 <Switch
                   id="push-notifications"
                   checked={preferences.push_enabled}
-                  onCheckedChange={(checked) => handlePreferenceToggle('push_enabled', checked)}
+                  onCheckedChange={(checked) =>
+                    handlePreferenceToggle("push_enabled", checked)
+                  }
                   disabled={preferencesLoading}
                 />
               </div>
@@ -724,7 +823,10 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
                     <Monitor className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                   </div>
                   <div>
-                    <Label htmlFor="desktop-notifications" className="text-sm font-medium">
+                    <Label
+                      htmlFor="desktop-notifications"
+                      className="text-sm font-medium"
+                    >
                       Desktop Notifications
                     </Label>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -735,7 +837,9 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
                 <Switch
                   id="desktop-notifications"
                   checked={preferences.desktop_enabled}
-                  onCheckedChange={(checked) => handlePreferenceToggle('desktop_enabled', checked)}
+                  onCheckedChange={(checked) =>
+                    handlePreferenceToggle("desktop_enabled", checked)
+                  }
                   disabled={preferencesLoading}
                 />
               </div>
@@ -746,7 +850,10 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
                     <Volume2 className="w-4 h-4 text-orange-600 dark:text-orange-400" />
                   </div>
                   <div>
-                    <Label htmlFor="sound-notifications" className="text-sm font-medium">
+                    <Label
+                      htmlFor="sound-notifications"
+                      className="text-sm font-medium"
+                    >
                       Sound Notifications
                     </Label>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -757,7 +864,9 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
                 <Switch
                   id="sound-notifications"
                   checked={preferences.sound_enabled}
-                  onCheckedChange={(checked) => handlePreferenceToggle('sound_enabled', checked)}
+                  onCheckedChange={(checked) =>
+                    handlePreferenceToggle("sound_enabled", checked)
+                  }
                   disabled={preferencesLoading}
                 />
               </div>
@@ -766,12 +875,14 @@ export default function DashboardHeader({ userInfo, onSettingsClick }: Dashboard
             {preferencesLoading && (
               <div className="flex items-center justify-center py-4">
                 <Loader2 className="w-5 h-5 animate-spin text-orange-500" />
-                <span className="ml-2 text-sm text-gray-500">Saving preferences...</span>
+                <span className="ml-2 text-sm text-gray-500">
+                  Saving preferences...
+                </span>
               </div>
             )}
           </div>
         </DialogContent>
       </Dialog>
     </header>
-  )
+  );
 }

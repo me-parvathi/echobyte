@@ -149,18 +149,8 @@ export default function LoginPage() {
                 </Button>
               </form>
 
-              <div className="text-center">
-                <Button variant="link" className="text-sm text-gray-600 hover:text-indigo-600">
-                  Forgot your password?
-                </Button>
-              </div>
-
-              <div className="pt-4 border-t border-gray-200">
-                <p className="text-xs text-gray-500 text-center">
-                  Demo accounts: john.doe@company.com, jane.manager@company.com, hr.admin@company.com,
-                  it.support@company.com
-                </p>
-              </div>
+           
+              
             </CardContent>
           </Card>
         </div>

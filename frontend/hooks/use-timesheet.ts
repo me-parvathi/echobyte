@@ -1,14 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
-import { TimesheetApiService } from '@/lib/timesheet-api';
-import { 
-  TimesheetBatchResponse, 
-  Timesheet, 
-  TimesheetDetail, 
+import { useState, useEffect, useCallback } from "react";
+import { TimesheetApiService } from "@/lib/timesheet-api";
+import {
+  TimesheetBatchResponse,
+  Timesheet,
+  TimesheetDetail,
   DailyEntryFormData,
   BulkSaveResponse,
-  TimesheetSubmissionResponse
-} from '@/lib/types';
-import { formatDate, isCurrentWeek, isPastWeek } from '@/lib/timesheet-utils';
+  TimesheetSubmissionResponse,
+} from "@/lib/types";
+import { formatDate, isCurrentWeek, isPastWeek } from "@/lib/timesheet-utils";
 
 // Hook for fetching timesheet batch data
 export function useTimesheetBatch(
@@ -23,7 +23,7 @@ export function useTimesheetBatch(
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
       const result = await TimesheetApiService.getMyTimesheetBatch(
         weekStartDate,
@@ -32,7 +32,9 @@ export function useTimesheetBatch(
       );
       setData(result);
     } catch (err) {
-      setError(err instanceof Error ? err : new Error('Failed to fetch timesheet data'));
+      setError(
+        err instanceof Error ? err : new Error("Failed to fetch timesheet data")
+      );
     } finally {
       setLoading(false);
     }
@@ -46,7 +48,7 @@ export function useTimesheetBatch(
     data,
     loading,
     error,
-    refetch: fetchData
+    refetch: fetchData,
   };
 }
 
@@ -64,28 +66,41 @@ export function useTimesheetHistoryPagination(pageSize: number = 10) {
   const [error, setError] = useState<Error | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
 
-  const fetchData = useCallback(async (page: number = 1) => {
-    setLoading(true);
-    setError(null);
-    
-    const skip = (page - 1) * pageSize;
-    
-    try {
-      const result = await TimesheetApiService.getMyTimesheetHistory(skip, pageSize);
-      setData(result);
-      setCurrentPage(page);
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error('Failed to fetch timesheet history'));
-    } finally {
-      setLoading(false);
-    }
-  }, [pageSize]);
+  const fetchData = useCallback(
+    async (page: number = 1) => {
+      setLoading(true);
+      setError(null);
 
-  const goToPage = useCallback((page: number) => {
-    if (page >= 1) {
-      fetchData(page);
-    }
-  }, [fetchData]);
+      const skip = (page - 1) * pageSize;
+
+      try {
+        const result = await TimesheetApiService.getMyTimesheetHistory(
+          skip,
+          pageSize
+        );
+        setData(result);
+        setCurrentPage(page);
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err
+            : new Error("Failed to fetch timesheet history")
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [pageSize]
+  );
+
+  const goToPage = useCallback(
+    (page: number) => {
+      if (page >= 1) {
+        fetchData(page);
+      }
+    },
+    [fetchData]
+  );
 
   const nextPage = useCallback(() => {
     if (data?.has_next) {
@@ -112,7 +127,7 @@ export function useTimesheetHistoryPagination(pageSize: number = 10) {
     goToPage,
     nextPage,
     previousPage,
-    refetch: () => fetchData(currentPage)
+    refetch: () => fetchData(currentPage),
   };
 }
 
@@ -125,12 +140,14 @@ export function useDailyEntry(workDate: string) {
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
       const result = await TimesheetApiService.getMyDailyEntry(workDate);
       setData(result);
     } catch (err) {
-      setError(err instanceof Error ? err : new Error('Failed to fetch daily entry'));
+      setError(
+        err instanceof Error ? err : new Error("Failed to fetch daily entry")
+      );
     } finally {
       setLoading(false);
     }
@@ -144,7 +161,7 @@ export function useDailyEntry(workDate: string) {
     data,
     loading,
     error,
-    refetch: fetchData
+    refetch: fetchData,
   };
 }
 
@@ -153,21 +170,25 @@ export function useTimesheetStatus(
   timesheetId: number | null,
   pollInterval: number = 5000
 ) {
-  const [status, setStatus] = useState<Timesheet['StatusCode'] | null>(null);
+  const [status, setStatus] = useState<Timesheet["StatusCode"] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
   const fetchStatus = useCallback(async () => {
     if (!timesheetId) return;
-    
+
     setLoading(true);
     setError(null);
-    
+
     try {
       const result = await TimesheetApiService.getTimesheetStatus(timesheetId);
       setStatus(result);
     } catch (err) {
-      setError(err instanceof Error ? err : new Error('Failed to fetch timesheet status'));
+      setError(
+        err instanceof Error
+          ? err
+          : new Error("Failed to fetch timesheet status")
+      );
     } finally {
       setLoading(false);
     }
@@ -179,7 +200,7 @@ export function useTimesheetStatus(
     fetchStatus();
 
     // Only poll if timesheet is submitted (not approved/rejected)
-    if (status === 'Submitted') {
+    if (status === "Submitted") {
       const interval = setInterval(fetchStatus, pollInterval);
       return () => clearInterval(interval);
     }
@@ -189,36 +210,43 @@ export function useTimesheetStatus(
     status,
     loading,
     error,
-    refetch: fetchStatus
+    refetch: fetchStatus,
   };
 }
 
-// Hook for saving daily entry
+// Hook for saving daily entry (UPDATED: returns saved TimesheetDetail)
 export function useSaveDailyEntry() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [success, setSuccess] = useState(false);
 
-  const saveEntry = useCallback(async (entryData: DailyEntryFormData) => {
-    setLoading(true);
-    setError(null);
-    setSuccess(false);
-    
-    try {
-      await TimesheetApiService.createMyDailyEntry(entryData);
-      setSuccess(true);
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error('Failed to save daily entry'));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const saveEntry = useCallback(
+    async (entryData: DailyEntryFormData): Promise<TimesheetDetail> => {
+      setLoading(true);
+      setError(null);
+      setSuccess(false);
+
+      try {
+        const saved = await TimesheetApiService.createMyDailyEntry(entryData);
+        setSuccess(true);
+        return saved; // ✅ return server-truth row
+      } catch (err) {
+        const e =
+          err instanceof Error ? err : new Error("Failed to save daily entry");
+        setError(e);
+        throw e;
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
 
   return {
     saveEntry,
     loading,
     error,
-    success
+    success,
   };
 }
 
@@ -234,18 +262,22 @@ export function useBulkSaveEntries() {
     setError(null);
     setSuccess(false);
     setProgress(0);
-    
+
     try {
       const result = await TimesheetApiService.bulkSaveDailyEntries(entries);
-      
+
       if (result.success) {
         setSuccess(true);
         setProgress(100);
       } else {
-        setError(new Error(`Failed to save some entries: ${result.errors.join(', ')}`));
+        setError(
+          new Error(`Failed to save some entries: ${result.errors.join(", ")}`)
+        );
       }
     } catch (err) {
-      setError(err instanceof Error ? err : new Error('Failed to bulk save entries'));
+      setError(
+        err instanceof Error ? err : new Error("Failed to bulk save entries")
+      );
     } finally {
       setLoading(false);
     }
@@ -256,7 +288,7 @@ export function useBulkSaveEntries() {
     loading,
     error,
     success,
-    progress
+    progress,
   };
 }
 
@@ -270,12 +302,14 @@ export function useSubmitTimesheet() {
     setLoading(true);
     setError(null);
     setSuccess(false);
-    
+
     try {
       await TimesheetApiService.submitMyTimesheet(timesheetId);
       setSuccess(true);
     } catch (err) {
-      setError(err instanceof Error ? err : new Error('Failed to submit timesheet'));
+      setError(
+        err instanceof Error ? err : new Error("Failed to submit timesheet")
+      );
     } finally {
       setLoading(false);
     }
@@ -285,6 +319,6 @@ export function useSubmitTimesheet() {
     submitTimesheet,
     loading,
     error,
-    success
+    success,
   };
-} 
+}
