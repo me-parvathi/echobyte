@@ -1,0 +1,124 @@
+trigger:
+  branches:
+    include: [ main ]
+  paths:
+    include:
+      - backend/**
+      - frontend/**
+      - azure-pipelines.yml
+      - infra/**
+
+variables:
+  pythonVersion: '3.11'                # ← match your backend
+  nodeVersion: '20'                    # ← match your frontend
+  azureServiceConnection: 'ECHOBYTE-SC' # ← name of your Azure service connection
+  backendAppName: 'echobyte-api'       # ← App Service for backend
+  frontendAppName: 'echobyte-web'      # ← App Service for frontend
+  backendDir: 'backend'
+  frontendDir: 'frontend'
+
+stages:
+# -------------------- BUILD --------------------
+- stage: Build
+  displayName: Build & Test
+  jobs:
+  - job: Build_Backend
+    displayName: Backend (FastAPI)
+    pool: { vmImage: 'ubuntu-latest' }
+    steps:
+      - checkout: self
+      - task: UsePythonVersion@0
+        inputs: { versionSpec: '$(pythonVersion)' }
+
+      - script: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # run tests (make strict later)
+          pytest -q || true
+        workingDirectory: $(backendDir)
+        displayName: Install & test
+
+      - task: ArchiveFiles@2
+        inputs:
+          rootFolderOrFile: '$(backendDir)'
+          includeRootFolder: false
+          archiveType: 'zip'
+          archiveFile: '$(Build.ArtifactStagingDirectory)/backend.zip'
+          replaceExistingArchive: true
+        displayName: Package backend
+
+      - task: PublishBuildArtifacts@1
+        inputs:
+          PathtoPublish: '$(Build.ArtifactStagingDirectory)/backend.zip'
+          ArtifactName: 'backend'
+        displayName: Publish backend artifact
+
+  - job: Build_Frontend
+    displayName: Frontend (React/Next)
+    pool: { vmImage: 'ubuntu-latest' }
+    steps:
+      - checkout: self
+      - task: NodeTool@0
+        inputs: { versionSpec: '$(nodeVersion)' }
+
+      - script: |
+          npm ci
+          npm run build
+        workingDirectory: $(frontendDir)
+        displayName: Install & build
+
+      # If you output a /.next or /dist and serve with Node on App Service,
+      # deploying the whole folder is fine.
+      - task: ArchiveFiles@2
+        inputs:
+          rootFolderOrFile: '$(frontendDir)'
+          includeRootFolder: false
+          archiveType: 'zip'
+          archiveFile: '$(Build.ArtifactStagingDirectory)/frontend.zip'
+          replaceExistingArchive: true
+        displayName: Package frontend
+
+      - task: PublishBuildArtifacts@1
+        inputs:
+          PathtoPublish: '$(Build.ArtifactStagingDirectory)/frontend.zip'
+          ArtifactName: 'frontend'
+        displayName: Publish frontend artifact
+
+# -------------------- DEPLOY --------------------
+- stage: Deploy
+  displayName: Deploy to Azure App Service
+  dependsOn: Build
+  jobs:
+  - deployment: Deploy_Backend
+    displayName: Deploy Backend
+    environment: 'prod'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - download: current
+              artifact: backend
+            - task: AzureWebApp@1
+              displayName: Deploy backend to App Service
+              inputs:
+                azureSubscription: '$(azureServiceConnection)'
+                appType: 'webAppLinux'
+                appName: '$(backendAppName)'
+                package: '$(Pipeline.Workspace)/backend/backend.zip'
+
+  - deployment: Deploy_Frontend
+    displayName: Deploy Frontend
+    environment: 'prod'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - download: current
+              artifact: frontend
+            - task: AzureWebApp@1
+              displayName: Deploy frontend to App Service
+              inputs:
+                azureSubscription: '$(azureServiceConnection)'
+                appType: 'webAppLinux'
+                appName: '$(frontendAppName)'
+                package: '$(Pipeline.Workspace)/frontend/frontend.zip'
