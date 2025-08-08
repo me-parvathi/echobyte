@@ -1,6 +1,7 @@
 trigger:
   branches:
-    include: [ main ]
+    include:
+      - feature/my-change
   paths:
     include:
       - backend/**
@@ -10,7 +11,7 @@ trigger:
 variables:
   pythonVersion: '3.11'
   nodeVersion: '20'
-  azureServiceConnection: 'ECHOBYTE-SC'   # <-- must match your DevOps service connection name
+  azureServiceConnection: 'ECHOBYTE-SC'     # Azure DevOps service connection
   backendAppName: 'echobyte-apis'
   frontendAppName: 'echobyte-frontendfinal'
   backendDir: 'backend'
