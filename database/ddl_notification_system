@@ -1,0 +1,257 @@
+/* ============================================================
+   EchoByte – Notification System
+   Compatible with the rest of the SQL-Server style schema
+   ============================================================ */
+
+SET XACT_ABORT ON;
+GO
+
+/* ─────────────────────────────────────────────────────────────
+   1.  Core lookup / enums as CHECK constraints
+   ───────────────────────────────────────────────────────────── */
+IF OBJECT_ID(N'dbo.Notifications', N'U') IS NOT NULL
+    DROP TABLE dbo.Notifications;
+GO
+
+/* ─────────────────────────────────────────────────────────────
+   2.  Main notifications table
+   ───────────────────────────────────────────────────────────── */
+CREATE TABLE dbo.Notifications (
+    Id             NVARCHAR(36)  NOT NULL PRIMARY KEY,
+    UserID         NVARCHAR(50)  NOT NULL,                      -- FK → dbo.Users
+    Type           NVARCHAR(50)  NOT NULL,                      -- leave, timesheet, ticket …
+    Category       NVARCHAR(50)  NOT NULL,                      -- workflow, reminder …
+    Title          NVARCHAR(200) NOT NULL,
+    Message        NVARCHAR(MAX) NOT NULL,
+    Priority       NVARCHAR(10)  NOT NULL 
+        CONSTRAINT CHK_Notifications_Priority
+        CHECK (Priority IN ('low','normal','high','urgent')),
+    Metadata       NVARCHAR(MAX) NULL,                          -- JSON; flexible
+    IsRead         BIT           NOT NULL 
+        CONSTRAINT DF_Notifications_IsRead DEFAULT (0),
+    ReadAt         DATETIME2(3)  NULL,
+    CreatedAt      DATETIME2(3)  NOT NULL 
+        CONSTRAINT DF_Notifications_Created DEFAULT SYSUTCDATETIME(),
+    ExpiresAt      DATETIME2(3)  NULL,
+
+    CONSTRAINT FK_Notifications_Users
+        FOREIGN KEY (UserID) REFERENCES dbo.Users(UserID)
+);
+GO
+
+CREATE INDEX IX_Notifications_UserRead   
+    ON dbo.Notifications (UserID, IsRead);
+CREATE INDEX IX_Notifications_UserType   
+    ON dbo.Notifications (UserID, Type);
+CREATE INDEX IX_Notifications_CreatedAt 
+    ON dbo.Notifications (CreatedAt);
+GO
+
+/* ─────────────────────────────────────────────────────────────
+   3.  User notification preferences
+   ───────────────────────────────────────────────────────────── */
+IF OBJECT_ID(N'dbo.UserNotificationPreferences', N'U') IS NOT NULL
+    DROP TABLE dbo.UserNotificationPreferences;
+GO
+
+CREATE TABLE dbo.UserNotificationPreferences (
+    UserID            NVARCHAR(50)  NOT NULL PRIMARY KEY,       -- FK → dbo.Users
+    EmailEnabled      BIT           NOT NULL DEFAULT (1),
+    PushEnabled       BIT           NOT NULL DEFAULT (1),
+    DesktopEnabled    BIT           NOT NULL DEFAULT (1),
+    SoundEnabled      BIT           NOT NULL DEFAULT (1),
+    QuietHoursStart   TIME          NULL    DEFAULT ('22:00'),
+    QuietHoursEnd     TIME          NULL    DEFAULT ('08:00'),
+    Timezone          NVARCHAR(50)  NOT NULL DEFAULT ('UTC'),
+    Preferences       NVARCHAR(MAX) NULL,                       -- JSON blob
+    CreatedAt         DATETIME2(3)  NOT NULL DEFAULT SYSUTCDATETIME(),
+    UpdatedAt         DATETIME2(3)  NOT NULL DEFAULT SYSUTCDATETIME(),
+
+    CONSTRAINT FK_UserPrefs_Users
+        FOREIGN KEY (UserID) REFERENCES dbo.Users(UserID)
+);
+GO
+
+/* ─────────────────────────────────────────────────────────────
+   4.  Delivery tracking (per channel)
+   ───────────────────────────────────────────────────────────── */
+IF OBJECT_ID(N'dbo.NotificationDeliveries', N'U') IS NOT NULL
+    DROP TABLE dbo.NotificationDeliveries;
+GO
+
+CREATE TABLE dbo.NotificationDeliveries (
+    Id              NVARCHAR(36)  NOT NULL PRIMARY KEY,
+    NotificationID  NVARCHAR(36)  NOT NULL,                     -- FK → dbo.Notifications
+    Channel         NVARCHAR(20)  NOT NULL
+        CONSTRAINT CHK_NotifDel_Channel
+        CHECK (Channel IN ('email','push','desktop','sms')),
+    Status          NVARCHAR(10)  NOT NULL DEFAULT ('pending')
+        CONSTRAINT CHK_NotifDel_Status
+        CHECK (Status IN ('pending','sent','delivered','failed')),
+    SentAt          DATETIME2(3)  NULL,
+    DeliveredAt     DATETIME2(3)  NULL,
+    ErrorMessage    NVARCHAR(MAX) NULL,
+    RetryCount      INT           NOT NULL DEFAULT (0),
+    MaxRetries      INT           NOT NULL DEFAULT (3),
+    CreatedAt       DATETIME2(3)  NOT NULL DEFAULT SYSUTCDATETIME(),
+
+    CONSTRAINT FK_NotifDel_Notif
+        FOREIGN KEY (NotificationID) 
+        REFERENCES dbo.Notifications(Id)
+        ON DELETE CASCADE
+);
+GO
+
+CREATE INDEX IX_NotifDel_NotifChannel 
+    ON dbo.NotificationDeliveries (NotificationID, Channel);
+CREATE INDEX IX_NotifDel_Status       
+    ON dbo.NotificationDeliveries (Status);
+GO
+
+/* ─────────────────────────────────────────────────────────────
+   5.  Notification templates (optional)
+   ───────────────────────────────────────────────────────────── */
+IF OBJECT_ID(N'dbo.NotificationTemplates', N'U') IS NOT NULL
+    DROP TABLE dbo.NotificationTemplates;
+GO
+
+CREATE TABLE dbo.NotificationTemplates (
+    Id              NVARCHAR(36)  NOT NULL PRIMARY KEY,
+    Type            NVARCHAR(50)  NOT NULL,
+    Category        NVARCHAR(50)  NOT NULL,
+    TitleTemplate   NVARCHAR(200) NOT NULL,
+    MessageTemplate NVARCHAR(MAX) NOT NULL,
+    Variables       NVARCHAR(MAX) NULL,                         -- JSON list of tokens
+    IsActive        BIT           NOT NULL DEFAULT (1),
+    CreatedAt       DATETIME2(3)  NOT NULL DEFAULT SYSUTCDATETIME(),
+    UpdatedAt       DATETIME2(3)  NOT NULL DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT UX_NotifTemplates UNIQUE (Type, Category)
+);
+GO
+
+/* ============================================================
+   6.  Domain-specific child tables
+   ============================================================ */
+
+/* ─── Leave ──────────────────────────────────────────────── */
+IF OBJECT_ID(N'dbo.LeaveNotifications', N'U') IS NOT NULL
+    DROP TABLE dbo.LeaveNotifications;
+GO
+
+CREATE TABLE dbo.LeaveNotifications (
+    Id              NVARCHAR(36) NOT NULL PRIMARY KEY,
+    NotificationID  NVARCHAR(36) NOT NULL,
+    LeaveID         INT          NOT NULL,                      -- FK → dbo.LeaveApplications
+    ActionType      NVARCHAR(20) NOT NULL,                      -- submitted, approved, …
+    LeaveType       NVARCHAR(50) NULL,
+    StartDate       DATE         NULL,
+    EndDate         DATE         NULL,
+    DaysRequested   DECIMAL(4,1) NULL,
+
+    CONSTRAINT FK_LeaveNotif_Notif
+        FOREIGN KEY (NotificationID) REFERENCES dbo.Notifications(Id) ON DELETE CASCADE,
+    CONSTRAINT FK_LeaveNotif_Leave
+        FOREIGN KEY (LeaveID)        REFERENCES dbo.LeaveApplications(LeaveApplicationID)
+);
+GO
+CREATE INDEX IX_LeaveNotif_Leave ON dbo.LeaveNotifications (LeaveID);
+GO
+
+/* ─── Timesheet ──────────────────────────────────────────── */
+IF OBJECT_ID(N'dbo.TimesheetNotifications', N'U') IS NOT NULL
+    DROP TABLE dbo.TimesheetNotifications;
+GO
+
+CREATE TABLE dbo.TimesheetNotifications (
+    Id              NVARCHAR(36) NOT NULL PRIMARY KEY,
+    NotificationID  NVARCHAR(36) NOT NULL,
+    TimesheetID     INT          NOT NULL,                      -- FK → dbo.Timesheets
+    ActionType      NVARCHAR(20) NOT NULL,                      -- submitted, approved, …
+    WeekEnding      DATE         NULL,
+    TotalHours      DECIMAL(5,2) NULL,
+
+    CONSTRAINT FK_TsheetNotif_Notif
+        FOREIGN KEY (NotificationID) REFERENCES dbo.Notifications(Id) ON DELETE CASCADE,
+    CONSTRAINT FK_TsheetNotif_Timesheet
+        FOREIGN KEY (TimesheetID)    REFERENCES dbo.Timesheets(TimesheetID)
+);
+GO
+CREATE INDEX IX_TsheetNotif_Timesheet ON dbo.TimesheetNotifications (TimesheetID);
+GO
+
+/* ─── Asset ──────────────────────────────────────────────── */
+IF OBJECT_ID(N'dbo.AssetNotifications', N'U') IS NOT NULL
+    DROP TABLE dbo.AssetNotifications;
+GO
+
+CREATE TABLE dbo.AssetNotifications (
+    Id              NVARCHAR(36) NOT NULL PRIMARY KEY,
+    NotificationID  NVARCHAR(36) NOT NULL,
+    AssetID         INT          NOT NULL,                      -- FK → dbo.Assets
+    ActionType      NVARCHAR(20) NOT NULL,                      -- assigned, returned …
+    AssetName       NVARCHAR(200) NULL,
+    AssetType       NVARCHAR(50)  NULL,
+
+    CONSTRAINT FK_AssetNotif_Notif
+        FOREIGN KEY (NotificationID) REFERENCES dbo.Notifications(Id) ON DELETE CASCADE,
+    CONSTRAINT FK_AssetNotif_Asset
+        FOREIGN KEY (AssetID)       REFERENCES dbo.Assets(AssetID)
+);
+GO
+CREATE INDEX IX_AssetNotif_Asset ON dbo.AssetNotifications (AssetID);
+GO
+
+/* ─── Ticket ─────────────────────────────────────────────── */
+IF OBJECT_ID(N'dbo.TicketNotifications', N'U') IS NOT NULL
+    DROP TABLE dbo.TicketNotifications;
+GO
+
+CREATE TABLE dbo.TicketNotifications (
+    Id              NVARCHAR(36) NOT NULL PRIMARY KEY,
+    NotificationID  NVARCHAR(36) NOT NULL,
+    TicketID        INT          NOT NULL,                      -- FK → dbo.Tickets
+    ActionType      NVARCHAR(20) NOT NULL,                      -- created, resolved …
+    TicketSubject   NVARCHAR(200) NULL,
+    Priority        NVARCHAR(20)  NULL,
+    Status          NVARCHAR(50)  NULL,
+
+    CONSTRAINT FK_TicketNotif_Notif
+        FOREIGN KEY (NotificationID) REFERENCES dbo.Notifications(Id) ON DELETE CASCADE,
+    CONSTRAINT FK_TicketNotif_Ticket
+        FOREIGN KEY (TicketID)      REFERENCES dbo.Tickets(TicketID)
+);
+GO
+CREATE INDEX IX_TicketNotif_Ticket ON dbo.TicketNotifications (TicketID);
+GO
+
+/* ─── Learning / Course ──────────────────────────────────── */
+IF OBJECT_ID(N'dbo.LearningNotifications', N'U') IS NOT NULL
+    DROP TABLE dbo.LearningNotifications;
+GO
+
+CREATE TABLE dbo.LearningNotifications (
+    Id                  NVARCHAR(36) NOT NULL PRIMARY KEY,
+    NotificationID      NVARCHAR(36) NOT NULL,
+    CourseID            INT          NOT NULL,                  -- FK → dbo.Courses
+    ActionType          NVARCHAR(20) NOT NULL,                  -- enrolled, completed …
+    CourseName          NVARCHAR(200) NULL,
+    ProgressPercentage  INT          NULL,
+
+    CONSTRAINT FK_LearnNotif_Notif
+        FOREIGN KEY (NotificationID) REFERENCES dbo.Notifications(Id) ON DELETE CASCADE,
+    CONSTRAINT FK_LearnNotif_Course
+        FOREIGN KEY (CourseID)       REFERENCES dbo.Courses(CourseID)
+);
+GO
+CREATE INDEX IX_LearnNotif_Course ON dbo.LearningNotifications (CourseID);
+GO
+
+/* ============================================================
+   7.  House-keeping jobs (optional, not part of schema)
+   ============================================================
+   • Job 1: nightly DELETE FROM dbo.Notifications WHERE ExpiresAt < GETUTCDATE()
+   • Job 2: retry failed deliveries up to MaxRetries
+   ============================================================ */
+
+PRINT N'✓ Notification-system tables created successfully';
+GO
