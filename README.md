@@ -4,3 +4,17 @@ The Company Portal Web Application is a centralized platform designed to streaml
 
 ## HOW TO RUN
 
+1. setup venv 
+2. What server to run
+3. How to setup database and run it
+4. and how to populate your database
+5. Front end how do you run your database
+
+
+### Setting up the DB for local development :
+    1. Install docker
+    2. Get docker running
+    3. docker pull mcr.microsoft.com/mssql/server:2022-latest
+    4. docker 
+
+Install both odbc 17 and 18 for connection to work

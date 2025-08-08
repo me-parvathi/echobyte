@@ -1,3 +1,61 @@
+# Python
+*pycache*
+__pycache__/
+*.py[cod]
+*$py.class
 
+# Virtual environments
+echobyte_venv/
+venv/
+env/
+.venv/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Docker
 docker-compose.yml
 docker-compose.override.yml
+
+# Data and logs
+csv_out/
+csv_out_backup/
+logs/
+
+# Database
+databas/ddl_backup.sql
+
+# Frontend build outputs
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/dist/
+
+# Node modules
+frontend/node_modules/
+node_modules/
+
+# Dependencies
+*.md
+LICENSE
+README.md
+
+# Scripts
+load_csvs_to_sqlserver.py
+environments.py
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+test*
