@@ -1,19 +1,105 @@
-# Starter pipeline
-# Start with a minimal pipeline that you can customize to build and deploy your code.
-# Add steps that build, run tests, deploy, and more:
-# https://aka.ms/yaml
-
 trigger:
-- main
+  branches:
+    include:
+      - feature/my-change
+  paths:
+    include:
+      - backend/**
+      - frontend/**
+      - azure-pipelines.yml
 
-pool:
-  vmImage: ubuntu-latest
+variables:
+  pythonVersion: '3.11'
+  nodeVersion: '20'
+  azureServiceConnection: 'ECHOBYTE-SC'     # Azure DevOps service connection
+  backendAppName: 'echobyte-apis'
+  frontendAppName: 'echobyte-frontendfinal'
+  backendDir: 'backend'
+  frontendDir: 'frontend'
 
-steps:
-- script: echo Hello, world!
-  displayName: 'Run a one-line script'
+stages:
+- stage: Build
+  displayName: Build & Test
+  jobs:
+  - job: Build_Backend
+    pool: { vmImage: 'ubuntu-latest' }
+    steps:
+      - checkout: self
+      - task: UsePythonVersion@0
+        inputs: { versionSpec: '$(pythonVersion)' }
+      - script: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pytest -q || true
+        workingDirectory: $(backendDir)
+        displayName: Install & test (backend)
+      - task: ArchiveFiles@2
+        inputs:
+          rootFolderOrFile: '$(backendDir)'
+          includeRootFolder: false
+          archiveType: zip
+          archiveFile: '$(Build.ArtifactStagingDirectory)/backend.zip'
+          replaceExistingArchive: true
+      - task: PublishBuildArtifacts@1
+        inputs:
+          PathtoPublish: '$(Build.ArtifactStagingDirectory)/backend.zip'
+          ArtifactName: 'backend'
 
-- script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
+  - job: Build_Frontend
+    pool: { vmImage: 'ubuntu-latest' }
+    steps:
+      - checkout: self
+      - task: NodeTool@0
+        inputs: { versionSpec: '$(nodeVersion)' }
+      - script: |
+          npm ci
+          npm run build
+        workingDirectory: $(frontendDir)
+        displayName: Install & build (frontend)
+      - task: ArchiveFiles@2
+        inputs:
+          rootFolderOrFile: '$(frontendDir)'
+          includeRootFolder: false
+          archiveType: zip
+          archiveFile: '$(Build.ArtifactStagingDirectory)/frontend.zip'
+          replaceExistingArchive: true
+      - task: PublishBuildArtifacts@1
+        inputs:
+          PathtoPublish: '$(Build.ArtifactStagingDirectory)/frontend.zip'
+          ArtifactName: 'frontend'
+
+- stage: Deploy
+  displayName: Deploy to Azure
+  dependsOn: Build
+  jobs:
+  - deployment: Deploy_Backend
+    environment: 'prod'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - download: current
+              artifact: backend
+            - task: AzureWebApp@1
+              displayName: Deploy backend
+              inputs:
+                azureSubscription: '$(azureServiceConnection)'
+                appType: 'webAppLinux'
+                appName: '$(backendAppName)'
+                package: '$(Pipeline.Workspace)/backend/backend.zip'
+
+  - deployment: Deploy_Frontend
+    environment: 'prod'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - download: current
+              artifact: frontend
+            - task: AzureWebApp@1
+              displayName: Deploy frontend
+              inputs:
+                azureSubscription: '$(azureServiceConnection)'
+                appType: 'webAppLinux'
+                appName: '$(frontendAppName)'
+                package: '$(Pipeline.Workspace)/frontend/frontend.zip'
