@@ -60,7 +60,12 @@ export default function EmployeeDirectory({ userInfo }: EmployeeDirectoryProps) 
   // Transform employees to frontend format
   const employees = useMemo(() => {
     if (!employeesResponse?.employees) return []
-    return transformEmployeesToFrontend(employeesResponse.employees, teamLookup, departmentLookup)
+    console.log('🔄 Transforming employees:', employeesResponse.employees.length)
+    console.log('🔄 Team lookup available:', !!teamLookup)
+    console.log('🔄 Department lookup available:', !!departmentLookup)
+    const transformed = transformEmployeesToFrontend(employeesResponse.employees, teamLookup, departmentLookup)
+    console.log('✅ Transformed employees:', transformed.length)
+    return transformed
   }, [employeesResponse, teamLookup, departmentLookup])
 
   // Get unique departments and roles for filters
@@ -140,17 +145,21 @@ export default function EmployeeDirectory({ userInfo }: EmployeeDirectoryProps) 
   // Filter employees based on role filter (backend handles search and department)
   const filteredEmployees = useMemo(() => {
     let filtered = employees
+    console.log('🔄 Filtering employees:', filtered.length)
 
     // Apply role filter (frontend only since backend doesn't support role filtering)
     if (roleFilter !== 'all') {
       filtered = filterEmployeesByRole(filtered, roleFilter)
+      console.log('🔄 After role filter:', filtered.length)
     }
 
+    console.log('✅ Final filtered employees:', filtered.length)
     return filtered
   }, [employees, roleFilter])
 
   // Loading state
   if (loading || lookupLoading) {
+    console.log('🔄 Loading state - employees:', loading, 'lookups:', lookupLoading)
     return (
       <div className="space-y-8">
         <div>
@@ -179,6 +188,7 @@ export default function EmployeeDirectory({ userInfo }: EmployeeDirectoryProps) 
 
   // Error state
   if (error || lookupError) {
+    console.log('❌ Error state - employees:', error, 'lookups:', lookupError)
     return (
       <div className="space-y-8">
         <div>
@@ -388,6 +398,7 @@ export default function EmployeeDirectory({ userInfo }: EmployeeDirectoryProps) 
 
       {/* Employee Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {console.log('🎯 Rendering employee grid with', filteredEmployees.length, 'employees')}
         {filteredEmployees.map((employee) => (
           <Card
             key={employee.EmployeeID}

@@ -6,6 +6,7 @@ from core.auth import get_current_active_user
 from . import schemas, service
 from datetime import date
 from decimal import Decimal
+from api.leave import models
 
 router = APIRouter()
 
@@ -230,6 +231,72 @@ def get_my_leave_balance_summary(
         "total_used_days": round(float(total_used), 1),
         "total_remaining_days": round(float(total_remaining), 1),
         "balances": balances
+    }
+
+@router.post("/my/setup-default-balance")
+def setup_default_leave_balance(
+    current_user = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Set up default leave entitlements for current user (for testing purposes)"""
+    from api.employee.models import Employee
+    from datetime import datetime
+    
+    # Get employee ID for current user
+    employee = db.query(Employee).filter(
+        Employee.UserID == current_user.UserID,
+        Employee.IsActive == True
+    ).first()
+    
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found for current user")
+    
+    current_year = datetime.now().year
+    
+    # Check if balances already exist
+    existing_balances = service.LeaveService.get_leave_balances_by_type_codes(
+        db, 
+        employee.EmployeeID, 
+        current_year, 
+        ['PTO', 'SICK']
+    )
+    
+    if existing_balances:
+        return {"message": "Leave balances already exist for this year", "balances": existing_balances}
+    
+    # Get PTO and SICK leave types
+    pto_type = db.query(models.LeaveType).filter(models.LeaveType.LeaveCode == 'PTO').first()
+    sick_type = db.query(models.LeaveType).filter(models.LeaveType.LeaveCode == 'SICK').first()
+    
+    if not pto_type or not sick_type:
+        raise HTTPException(status_code=404, detail="PTO or SICK leave types not found")
+    
+    # Create default balances
+    from api.leave.schemas import LeaveBalanceCreate
+    
+    pto_balance = LeaveBalanceCreate(
+        EmployeeID=employee.EmployeeID,
+        LeaveTypeID=pto_type.LeaveTypeID,
+        Year=current_year,
+        EntitledDays=20.0,  # 20 days PTO
+        UsedDays=0.0
+    )
+    
+    sick_balance = LeaveBalanceCreate(
+        EmployeeID=employee.EmployeeID,
+        LeaveTypeID=sick_type.LeaveTypeID,
+        Year=current_year,
+        EntitledDays=10.0,  # 10 days sick leave
+        UsedDays=0.0
+    )
+    
+    # Create the balances
+    created_pto = service.LeaveService.create_leave_balance(db, pto_balance)
+    created_sick = service.LeaveService.create_leave_balance(db, sick_balance)
+    
+    return {
+        "message": "Default leave entitlements created successfully",
+        "balances": [created_pto, created_sick]
     }
 
 # Approval routes

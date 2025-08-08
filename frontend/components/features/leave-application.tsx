@@ -11,13 +11,15 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Calendar, Clock, CheckCircle, XCircle, AlertCircle, Plus, FileText, Trash2, Edit } from "lucide-react"
+import { Calendar, Clock, CheckCircle, XCircle, AlertCircle, Plus, FileText, Trash2, Edit, MessageSquare } from "lucide-react"
 import { useLeaveManagement } from "@/hooks/use-leave"
 import { getCurrentEmployeeId, getCurrentUserInfo } from "@/lib/utils"
 import type { LeaveApplication, LeaveType, LeaveBalanceSummary, LeaveFilterParams } from "@/lib/types"
 import { useToast } from "@/hooks/use-toast"
+import { api } from "@/lib/api"
 import { Pagination } from "@/components/ui/pagination"
 import { LeaveFilters } from "@/components/ui/leave-filters"
+import { LeaveCommentsDialog } from "@/components/ui/leave-comments-dialog"
 
 export default function LeaveApplication() {
   const { toast } = useToast()
@@ -31,6 +33,8 @@ export default function LeaveApplication() {
   const [timesheetConflict, setTimesheetConflict] = useState<string | null>(null)
   const [calculatedDays, setCalculatedDays] = useState<number>(0)
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(false)
+  const [selectedLeaveApplication, setSelectedLeaveApplication] = useState<LeaveApplication | null>(null)
+  const [isCommentsDialogOpen, setIsCommentsDialogOpen] = useState(false)
 
   const currentEmployeeId = getCurrentEmployeeId()
   const currentUser = getCurrentUserInfo()
@@ -451,6 +455,16 @@ export default function LeaveApplication() {
     setTimesheetConflict(null)
   }
 
+  const handleViewComments = (application: LeaveApplication) => {
+    setSelectedLeaveApplication(application)
+    setIsCommentsDialogOpen(true)
+  }
+
+  const handleCloseCommentsDialog = () => {
+    setIsCommentsDialogOpen(false)
+    setSelectedLeaveApplication(null)
+  }
+
   // Format leave balance data for display
   const leaveBalanceDisplay = leaveBalance ? [
     ...leaveBalance.balances.map(balance => ({
@@ -461,6 +475,8 @@ export default function LeaveApplication() {
       color: "bg-blue-100 text-blue-800"
     }))
   ] : []
+
+
 
   if (loading && !leaveApplications.length) {
     return (
@@ -486,7 +502,7 @@ export default function LeaveApplication() {
       {/* Leave Balance Overview */}
       <div>
         <h2 className="text-2xl font-bold text-gray-900 mb-6">Leave Management</h2>
-        {leaveBalance && (
+        {leaveBalance ? (
           <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
             <h3 className="font-semibold text-blue-900 mb-2">Leave Balance Summary</h3>
             <div className="grid grid-cols-3 gap-4 text-sm">
@@ -503,6 +519,40 @@ export default function LeaveApplication() {
                 <span className="ml-2 font-semibold">{leaveBalance.total_remaining_days} days</span>
               </div>
             </div>
+          </div>
+        ) : (
+          <div className="mb-4 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+            <h3 className="font-semibold text-yellow-900 mb-2">Leave Balance Summary</h3>
+            <p className="text-yellow-700 text-sm mb-3">
+              {loading ? "Loading leave balance..." : "No leave balance found. Please contact HR to set up your leave entitlements."}
+            </p>
+            {!loading && (
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={async () => {
+                  try {
+                    await api.post('/api/leave/my/setup-default-balance');
+                    toast.toast({
+                      title: "Leave entitlements created",
+                      description: "Default PTO and sick leave entitlements have been set up for 2025.",
+                    });
+                    // Refresh the balance
+                    refreshBalance();
+                  } catch (err) {
+                    console.error('Failed to setup leave balance:', err);
+                    toast.toast({
+                      title: "Error",
+                      description: "Failed to set up leave entitlements. Please contact HR.",
+                      variant: "destructive"
+                    });
+                  }
+                }}
+                className="text-yellow-700 border-yellow-300 hover:bg-yellow-100"
+              >
+                Set Up Default Entitlements (Testing)
+              </Button>
+            )}
           </div>
         )}
         
@@ -760,55 +810,69 @@ export default function LeaveApplication() {
                           {application.StatusCode.toLowerCase() === "cancelled" && " • Application was cancelled"}
                         </p>
 
-                        {/* Action buttons for applications that can be edited or canceled */}
-                        {(canEditApplication(application) || canCancelApplication(application)) && (
-                          <div className="flex gap-2 mt-3">
-                            {canEditApplication(application) && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleEdit(application)}
-                                className="h-8"
-                              >
-                                <Edit className="w-3 h-3 mr-1" />
-                                Edit
-                              </Button>
-                            )}
-                            {application.StatusCode.toLowerCase() === "draft" && (
-                              <>
+                        {/* Action buttons */}
+                        <div className="flex gap-2 mt-3">
+                          {/* View Comments button - always visible */}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleViewComments(application)}
+                            className="h-8"
+                          >
+                            <MessageSquare className="w-3 h-3 mr-1" />
+                            View Comments
+                          </Button>
+                          
+                          {/* Edit/Delete/Cancel buttons for applications that can be edited or canceled */}
+                          {(canEditApplication(application) || canCancelApplication(application)) && (
+                            <>
+                              {canEditApplication(application) && (
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => handleDelete(application.LeaveApplicationID)}
-                                  className="h-8 text-red-600 hover:text-red-700"
+                                  onClick={() => handleEdit(application)}
+                                  className="h-8"
                                 >
-                                  <Trash2 className="w-3 h-3 mr-1" />
-                                  Delete
+                                  <Edit className="w-3 h-3 mr-1" />
+                                  Edit
                                 </Button>
+                              )}
+                              {application.StatusCode.toLowerCase() === "draft" && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleDelete(application.LeaveApplicationID)}
+                                    className="h-8 text-red-600 hover:text-red-700"
+                                  >
+                                    <Trash2 className="w-3 h-3 mr-1" />
+                                    Delete
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="default"
+                                    onClick={() => handleSubmitDraft(application)}
+                                    className="h-8 bg-blue-600 hover:bg-blue-700"
+                                  >
+                                    <FileText className="w-3 h-3 mr-1" />
+                                    Submit
+                                  </Button>
+                                </>
+                              )}
+                              {canCancelApplication(application) && application.StatusCode.toLowerCase() !== "draft" && (
                                 <Button
                                   size="sm"
-                                  variant="default"
-                                  onClick={() => handleSubmitDraft(application)}
-                                  className="h-8 bg-blue-600 hover:bg-blue-700"
+                                  variant="outline"
+                                  onClick={() => handleCancel(application.LeaveApplicationID)}
+                                  className="h-8 text-orange-600 hover:text-orange-700"
                                 >
-                                  <FileText className="w-3 h-3 mr-1" />
-                                  Submit
+                                  <XCircle className="w-3 h-3 mr-1" />
+                                  Cancel
                                 </Button>
-                              </>
-                            )}
-                            {canCancelApplication(application) && application.StatusCode.toLowerCase() !== "draft" && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleCancel(application.LeaveApplicationID)}
-                                className="h-8 text-orange-600 hover:text-orange-700"
-                              >
-                                <XCircle className="w-3 h-3 mr-1" />
-                                Cancel
-                              </Button>
-                            )}
-                          </div>
-                        )}
+                              )}
+                            </>
+                          )}
+                        </div>
                       </div>
                     )
                   })}
@@ -829,6 +893,15 @@ export default function LeaveApplication() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Comments Dialog */}
+      {selectedLeaveApplication && (
+        <LeaveCommentsDialog
+          leaveApplication={selectedLeaveApplication}
+          isOpen={isCommentsDialogOpen}
+          onClose={handleCloseCommentsDialog}
+        />
+      )}
     </div>
   )
 }

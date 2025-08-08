@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { api } from "@/lib/api"
-import { EmployeeFeedbackCreate, FeedbackTarget } from "@/lib/types"
+import { EmployeeFeedbackCreate, FeedbackTarget, FeedbackFilterParams } from "@/lib/types"
 
 interface UseFeedbackReturn {
   feedback: any[]
@@ -14,7 +14,7 @@ interface UseFeedbackReturn {
   loading: boolean
   error: string | null
   submitFeedback: (data: EmployeeFeedbackCreate) => Promise<boolean>
-  getFeedback: (params?: any) => Promise<void>
+  getFeedback: (params?: FeedbackFilterParams) => Promise<void>
   getFeedbackTypes: () => Promise<void>
   getTargets: () => Promise<void>
   getCurrentUserManager: () => Promise<void>
@@ -107,10 +107,26 @@ export function useFeedback(): UseFeedbackReturn {
     }
   }
 
-  const getFeedback = async (params?: any) => {
+  const getFeedback = async (params?: FeedbackFilterParams) => {
     try {
       setLoading(true)
-      const response = await api.get<any[]>("/feedback/")
+      
+      // Build query parameters
+      const queryParams = new URLSearchParams()
+      
+      // Add filter parameters when they exist
+      if (params) {
+        if (params.feedback_type_code) queryParams.append('feedback_type_code', params.feedback_type_code)
+        if (params.target_manager_id) queryParams.append('target_manager_id', params.target_manager_id.toString())
+        if (params.target_department_id) queryParams.append('target_department_id', params.target_department_id.toString())
+        if (params.is_read !== undefined) queryParams.append('is_read', params.is_read.toString())
+        if (params.skip !== undefined) queryParams.append('skip', params.skip.toString())
+        if (params.limit !== undefined) queryParams.append('limit', params.limit.toString())
+      }
+      
+      // Construct the endpoint with query parameters
+      const endpoint = `/feedback/${queryParams.toString() ? `?${queryParams.toString()}` : ''}`
+      const response = await api.get<any[]>(endpoint)
       setFeedback(response)
     } catch (err: any) {
       setError(err.message || "Failed to load feedback")

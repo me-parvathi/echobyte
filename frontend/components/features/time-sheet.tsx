@@ -31,9 +31,14 @@ import {
 } from "lucide-react"
 import { useTimesheetBatch, useTimesheetHistoryPagination } from "@/hooks/use-timesheet"
 import { TimesheetApiService } from "@/lib/timesheet-api"
+import TimesheetEntryTable from "./timesheet-entry-table"
+import WeekSelector from "./week-selector"
 import { Timesheet, TimesheetDetail } from "@/lib/types"
+import { isWithinSubmissionRange } from "@/lib/timesheet-utils"
+import { useToast } from "@/hooks/use-toast"
 
 export default function TimeSheet() {
+  const { toast } = useToast()
   const [currentTime, setCurrentTime] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [isTimerRunning, setIsTimerRunning] = useState(false)
@@ -48,12 +53,12 @@ export default function TimeSheet() {
   const [timesheetDetails, setTimesheetDetails] = useState<TimesheetDetail[]>([])
   const [detailsLoading, setDetailsLoading] = useState(false)
 
-  // Calculate current week start (Monday)
-  const currentWeekStart = startOfWeek(currentTime, { weekStartsOn: 1 })
+  // Week selection state
+  const [selectedWeekStart, setSelectedWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }))
 
-  // Get timesheet data
+  // Get timesheet data for selected week
   const { data: timesheetData, loading: timesheetLoading } = useTimesheetBatch(
-    format(currentWeekStart, "yyyy-MM-dd")
+    format(selectedWeekStart, "yyyy-MM-dd")
   )
 
   // Get timesheet history with pagination
@@ -134,7 +139,7 @@ export default function TimeSheet() {
   // Memoize expensive calculations
   const weekDays = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => {
-      const date = addDays(currentWeekStart, i)
+      const date = addDays(selectedWeekStart, i)
       const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]
       return {
         key: dayNames[date.getDay()],
@@ -146,7 +151,7 @@ export default function TimeSheet() {
         isSelected: isSameDay(date, selectedDate),
       }
     })
-  }, [currentWeekStart, selectedDate])
+  }, [selectedWeekStart, selectedDate])
 
   // Convert previous timesheets from paginated API data
   const previousTimesheets = useMemo(() => {
@@ -190,24 +195,63 @@ export default function TimeSheet() {
     setTimerStart(null)
   }, [])
 
+  const handleWeekChange = useCallback((weekStart: Date) => {
+    setSelectedWeekStart(weekStart)
+    // Reset time entries when changing weeks
+    setTimeEntries({
+      monday: { hours: "0", project: "", description: "", overtime: false },
+      tuesday: { hours: "0", project: "", description: "", overtime: false },
+      wednesday: { hours: "0", project: "", description: "", overtime: false },
+      thursday: { hours: "0", project: "", description: "", overtime: false },
+      friday: { hours: "0", project: "", description: "", overtime: false },
+      saturday: { hours: "0", project: "", description: "", overtime: false },
+      sunday: { hours: "0", project: "", description: "", overtime: false },
+    })
+  }, [])
+
   const handleSubmit = useCallback(() => {
     setShowSubmissionModal(true)
   }, [])
 
   const confirmSubmit = useCallback(async () => {
-    if (!timesheetData?.current_week?.TimesheetID) return
+    if (!timesheetData?.current_week?.TimesheetID) {
+      toast({
+        title: "No timesheet found",
+        description: "Please save your timesheet first before submitting.",
+        variant: "destructive",
+      })
+      return
+    }
+    
+    if (!isWithinSubmissionRange(selectedWeekStart)) {
+      toast({
+        title: "Cannot submit",
+        description: "This week is outside the submission range. You can only submit timesheets for the current month.",
+        variant: "destructive",
+      })
+      return
+    }
     
     setSubmitLoading(true)
     try {
       await TimesheetApiService.submitMyTimesheet(timesheetData.current_week.TimesheetID)
       setShowSubmissionModal(false)
+      toast({
+        title: "Timesheet submitted",
+        description: "Your timesheet has been submitted for approval.",
+      })
       // Optionally refresh data
     } catch (error) {
       console.error("Failed to submit timesheet:", error)
+      toast({
+        title: "Submission failed",
+        description: error instanceof Error ? error.message : "Failed to submit timesheet",
+        variant: "destructive",
+      })
     } finally {
       setSubmitLoading(false)
     }
-  }, [timesheetData?.current_week?.TimesheetID])
+  }, [timesheetData?.current_week?.TimesheetID, selectedWeekStart, toast])
 
   // Handle timesheet details view
   const handleViewDetails = useCallback(async (timesheet: any) => {
@@ -261,19 +305,25 @@ export default function TimeSheet() {
               </div>
               <div>
                 <CardTitle className="text-2xl font-bold text-gray-900">Timesheet</CardTitle>
-                <p className="text-gray-600">Week ending {format(addDays(currentWeekStart, 6), "MMMM d, yyyy")}</p>
-                {timesheetData?.current_week && (
-                  <Badge className="bg-gradient-to-r from-orange-600 to-amber-600 text-white text-xs shadow-lg">
-                    {timesheetData.current_week.StatusCode}
-                  </Badge>
-                )}
+                <div className="flex items-center gap-4">
+                  <WeekSelector
+                    selectedWeekStart={selectedWeekStart}
+                    onWeekChange={handleWeekChange}
+                    className="text-gray-600"
+                  />
+                  {timesheetData?.current_week && (
+                    <Badge className="bg-gradient-to-r from-orange-600 to-amber-600 text-white text-xs shadow-lg">
+                      {timesheetData.current_week.StatusCode}
+                    </Badge>
+                  )}
+                </div>
               </div>
             </div>
             <div className="flex gap-3">
               <Button
                 variant="outline"
                 onClick={handleSubmit}
-                disabled={submitLoading}
+                disabled={submitLoading || !isWithinSubmissionRange(selectedWeekStart)}
                 className="bg-transparent border-orange-200 hover:bg-orange-50"
               >
                 <Save className="w-4 h-4 mr-2" />
@@ -335,6 +385,16 @@ export default function TimeSheet() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Daily Entries */}
+      <TimesheetEntryTable
+        weekDays={weekDays}
+        timeEntries={timeEntries}
+        setTimeEntries={setTimeEntries}
+        projects={projects}
+        selectedWeekStart={selectedWeekStart}
+        isWithinSubmissionRange={isWithinSubmissionRange(selectedWeekStart)}
+      />
 
       {/* Previous Timesheets */}
       <Card className="border-0 shadow-lg bg-white">
@@ -450,9 +510,13 @@ export default function TimeSheet() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="text-sm text-gray-600">
+                <p>• Week: {format(selectedWeekStart, "MMM d")} - {format(addDays(selectedWeekStart, 6), "MMM d, yyyy")}</p>
                 <p>• Total Hours: {totalHours}</p>
                 <p>• Regular Hours: {regularHours}</p>
                 <p>• Overtime Hours: {overtimeHours}</p>
+                {!isWithinSubmissionRange(selectedWeekStart) && (
+                  <p className="text-orange-600 font-medium">⚠️ This week is outside the submission range</p>
+                )}
               </div>
               <div className="flex gap-2">
                 <Button
@@ -464,7 +528,7 @@ export default function TimeSheet() {
                 </Button>
                 <Button
                   onClick={confirmSubmit}
-                  disabled={submitLoading}
+                  disabled={submitLoading || !isWithinSubmissionRange(selectedWeekStart)}
                   className="flex-1 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700"
                 >
                   {submitLoading ? "Submitting..." : "Submit"}
@@ -483,7 +547,8 @@ export default function TimeSheet() {
               <FileText className="w-6 h-6 text-gray-600" />
               Timesheet Details for Week Ending {selectedTimesheet?.WeekEndDate ? format(new Date(selectedTimesheet.WeekEndDate), "MMM d, yyyy") : ""}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription asChild>
+            <div>
               {detailsLoading ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="w-8 h-8 animate-spin text-orange-600" />
@@ -531,7 +596,8 @@ export default function TimeSheet() {
                   </div>
                 </div>
               )}
-            </DialogDescription>
+            </div>
+          </DialogDescription>
           </DialogHeader>
         </DialogContent>
       </Dialog>

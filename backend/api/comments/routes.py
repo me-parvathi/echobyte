@@ -39,7 +39,7 @@ async def create_comment_for_entity(
     entity_id: int,
     comment_data: CommentCreate,
     comment_service: CommentService = Depends(get_comment_service),
-    current_user: Employee = Depends(get_current_user),
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -49,8 +49,13 @@ async def create_comment_for_entity(
     - LeaveApplication: Comments on leave applications
     - Ticket: Comments on tickets
     """
+    # Get employee ID for the current user
+    employee = db.query(Employee).filter(Employee.UserID == current_user.UserID).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found for current user")
+    
     return comment_service.create_comment(
-        db, entity_type, entity_id, comment_data, current_user.EmployeeID
+        db, entity_type, entity_id, comment_data, employee.EmployeeID
     )
 
 @router.put("/{comment_id}", response_model=CommentResponse)
@@ -58,7 +63,7 @@ async def update_comment(
     comment_id: int,
     comment_data: CommentUpdate,
     comment_service: CommentService = Depends(get_comment_service),
-    current_user: Employee = Depends(get_current_user),
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -66,13 +71,18 @@ async def update_comment(
     
     Users can only edit their own comments.
     """
-    return comment_service.update_comment(db, comment_id, comment_data, current_user.EmployeeID)
+    # Get employee ID for the current user
+    employee = db.query(Employee).filter(Employee.UserID == current_user.UserID).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found for current user")
+    
+    return comment_service.update_comment(db, comment_id, comment_data, employee.EmployeeID)
 
 @router.delete("/{comment_id}")
 async def delete_comment(
     comment_id: int,
     comment_service: CommentService = Depends(get_comment_service),
-    current_user: Employee = Depends(get_current_user),
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -80,7 +90,12 @@ async def delete_comment(
     
     Users can only delete their own comments.
     """
-    success = comment_service.delete_comment(db, comment_id, current_user.EmployeeID)
+    # Get employee ID for the current user
+    employee = db.query(Employee).filter(Employee.UserID == current_user.UserID).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found for current user")
+    
+    success = comment_service.delete_comment(db, comment_id, employee.EmployeeID)
     if success:
         return {"message": "Comment deleted successfully"}
     else:

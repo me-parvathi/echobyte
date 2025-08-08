@@ -26,17 +26,22 @@ export function useProfilePicture(employeeId: number) {
     try {
       const picture = await getLatestProfilePicture(employeeId)
       console.log('Profile picture response:', picture)
-      
-      if (picture && picture.PictureID) {
+
+      if (picture && picture.FilePath) {
         // Use the backend proxy endpoint instead of direct Azure URL
-        const proxyUrl = `http://localhost:8000/api/profile/serve-latest/${employeeId}`
+        const proxyUrl = `/api/profile/serve-latest/${employeeId}`
         console.log('Setting picture URL (proxy):', proxyUrl)
         setPictureUrl(proxyUrl)
       } else {
-        console.log('No picture found or no PictureID')
+        console.log('No picture found or no FilePath')
         setPictureUrl(undefined)
       }
     } catch (err: any) {
+      if (err && err.status === 404) {
+        // No photo uploaded – silently fall back to default avatar
+        setPictureUrl(undefined)
+        return; // Skip error handling/logging for expected 404
+      }
       console.error('Failed to fetch profile picture:', err)
       setError(err.message || 'Failed to load profile picture')
       setPictureUrl(undefined)

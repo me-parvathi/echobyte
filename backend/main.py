@@ -30,6 +30,7 @@ from api.ticket.routes import router as ticket_router
 from api.learning.routes import router as learning_router
 from api.profile.routes import router as profile_router
 from api.chatbot.routes import router as chatbot_router
+from api.notifications.routes import router as notifications_router
 
 # Import database utilities
 from core.database import init_database, get_database_health, test_database_connection, get_connection_stats, reset_connection_pool
@@ -187,11 +188,35 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     Handle request validation errors.
     """
     logger.warning(f"Validation error: {exc.errors()}")
+    
+    # Convert errors to JSON-serializable format
+    serializable_errors = []
+    for error in exc.errors():
+        serializable_error = {
+            "type": error["type"],
+            "loc": error["loc"],
+            "msg": error["msg"],
+            "input": error["input"]
+        }
+        # Handle the ctx field which may contain non-serializable objects
+        if "ctx" in error:
+            ctx = error["ctx"]
+            serializable_ctx = {}
+            for key, value in ctx.items():
+                if hasattr(value, '__dict__'):
+                    # Convert objects to string representation
+                    serializable_ctx[key] = str(value)
+                else:
+                    serializable_ctx[key] = value
+            serializable_error["ctx"] = serializable_ctx
+        
+        serializable_errors.append(serializable_error)
+    
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
             "detail": "Validation error",
-            "errors": exc.errors(),
+            "errors": serializable_errors,
             "path": request.url.path
         }
     )
@@ -346,6 +371,13 @@ app.include_router(
     prefix="/api/chatbot",
     tags=["Chatbot"],
     responses={404: {"description": "Chatbot service not found"}}
+)
+
+# Notifications
+app.include_router(
+    notifications_router,
+    prefix="/api/notifications",
+    tags=["Notifications"]
 )
 
 # Root endpoints

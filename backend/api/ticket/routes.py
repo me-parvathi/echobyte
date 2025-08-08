@@ -277,4 +277,57 @@ def update_category(
     return db_category
 
 # Import models for category routes
-from . import models 
+from . import models
+
+# Test endpoint for notifications
+@router.post("/test-notifications", tags=["Testing"])
+def test_notifications(
+    db: Session = Depends(get_db)
+):
+    """Test endpoint to verify notification system is working"""
+    try:
+        # Get IT employees
+        it_employees = service.TicketService.get_it_employees(db)
+        
+        if not it_employees:
+            raise HTTPException(
+                status_code=404, 
+                detail="No IT employees found in the system"
+            )
+        
+        # Create a test notification for the first IT employee
+        from core.notification_service import NotificationService
+        from api.notifications.schemas import NotificationCreate
+        import json
+        from datetime import datetime, timedelta
+        
+        notification_service = NotificationService(db)
+        
+        test_notification = NotificationCreate(
+            user_id=it_employees[0].UserID,
+            type="test_notification",
+            category="it_support",
+            title="Test Notification",
+            message="This is a test notification to verify the system is working",
+            priority="low",
+            metadata=json.dumps({
+                "test": True,
+                "timestamp": datetime.utcnow().isoformat()
+            }),
+            expires_at=datetime.utcnow() + timedelta(hours=1)
+        )
+        
+        notification = notification_service.create_notification(test_notification)
+        
+        return {
+            "message": "Test notification sent successfully",
+            "notification_id": notification.Id,
+            "sent_to": f"{it_employees[0].FirstName} {it_employees[0].LastName}",
+            "it_employees_count": len(it_employees)
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Test failed: {str(e)}"
+        ) 

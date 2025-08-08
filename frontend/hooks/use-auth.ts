@@ -11,6 +11,7 @@ interface UseAuthReturn {
   refreshToken: () => Promise<boolean>
   loading: boolean
   error: string | null
+  setError: (error: string | null) => void
 }
 
 export function useAuth(): UseAuthReturn {
@@ -107,7 +108,33 @@ export function useAuth(): UseAuthReturn {
       return response
     } catch (err: any) {
       console.error("❌ Login failed:", err)
-      setError(err.message || "Login failed")
+      
+      // Handle different types of errors gracefully
+      if (err.isAuthError) {
+        // Authentication errors (401, 403)
+        if (err.authErrorType === "username_not_found") {
+          setError("No existing user with this username. Please contact your IT department.")
+        } else if (err.authErrorType === "password_incorrect") {
+          setError("Password is incorrect. Please contact IT for assistance.")
+        } else if (err.message.includes("terminated")) {
+          setError("Access denied. Your employment has been terminated. Please contact HR for assistance.")
+        } else {
+          setError("Authentication failed. Please check your credentials and try again.")
+        }
+      } else if (err.isDatabaseError) {
+        // Database connection errors (500 with database-related messages)
+        setError("Database connection error. Please try again in a few moments or contact IT support if the problem persists.")
+      } else if (err.isNetworkError) {
+        // Other server errors (500+)
+        setError("Server error. Please try again later or contact support if the problem persists.")
+      } else if (err.message.includes("fetch") || err.message.includes("network")) {
+        // Network errors
+        setError("Network error. Please check your internet connection and try again.")
+      } else {
+        // Generic error fallback
+        setError(err.message || "Login failed. Please try again.")
+      }
+      
       return null
     } finally {
       setLoading(false)
@@ -125,5 +152,5 @@ export function useAuth(): UseAuthReturn {
     }
   }
 
-  return { login, logout, refreshToken, loading, error }
+  return { login, logout, refreshToken, loading, error, setError }
 } 

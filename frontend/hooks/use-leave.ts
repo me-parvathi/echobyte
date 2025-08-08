@@ -27,7 +27,6 @@ export function useLeaveManagement(options: UseLeaveOptions = {}) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const hasFetched = useRef(false);
-  const isMounted = useRef(true);
   
   // Pagination state
   const [pagination, setPagination] = useState<PaginationParams>({
@@ -63,14 +62,8 @@ export function useLeaveManagement(options: UseLeaveOptions = {}) {
       employeeId, 
       paginationParams, 
       filterParams,
-      hasFetched: hasFetched.current,
-      isMounted: isMounted.current
+      hasFetched: hasFetched.current
     });
-    
-    if (hasFetched.current || !isMounted.current) {
-      console.log('⏭️ Skipping leave applications fetch - already fetched or component unmounted');
-      return;
-    }
     
     setLoading(true);
     setError(null);
@@ -102,7 +95,6 @@ export function useLeaveManagement(options: UseLeaveOptions = {}) {
         has_next: result.has_next,
         has_previous: result.has_previous
       });
-      memoizedOnSuccess(result);
       hasFetched.current = true;
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Failed to fetch leave applications');
@@ -118,23 +110,32 @@ export function useLeaveManagement(options: UseLeaveOptions = {}) {
 
   // Update pagination
   const updatePagination = useCallback((newPagination: PaginationParams) => {
+    console.log('🔄 Updating pagination:', newPagination);
     setPagination(newPagination);
-    hasFetched.current = false;
+    // Force refetch with new pagination
     fetchLeaveApplications(employeeId, newPagination, filters);
   }, [employeeId, filters, fetchLeaveApplications]);
 
   // Update filters
   const updateFilters = useCallback((newFilters: LeaveFilterParams) => {
+    console.log('🔄 Updating filters:', newFilters);
     setFilters(newFilters);
-    hasFetched.current = false;
-    fetchLeaveApplications(employeeId, pagination, newFilters);
+    // Reset pagination to first page when filters change
+    const resetPagination = { ...pagination, skip: 0, page: 1 };
+    setPagination(resetPagination);
+    // Force refetch with new filters
+    fetchLeaveApplications(employeeId, resetPagination, newFilters);
   }, [employeeId, pagination, fetchLeaveApplications]);
 
   // Clear filters
   const clearFilters = useCallback(() => {
+    console.log('🔄 Clearing filters');
     setFilters({});
-    hasFetched.current = false;
-    fetchLeaveApplications(employeeId, pagination, {});
+    // Reset pagination to first page when clearing filters
+    const resetPagination = { ...pagination, skip: 0, page: 1 };
+    setPagination(resetPagination);
+    // Force refetch with cleared filters
+    fetchLeaveApplications(employeeId, resetPagination, {});
   }, [employeeId, pagination, fetchLeaveApplications]);
 
   // Navigation methods
@@ -182,10 +183,21 @@ export function useLeaveManagement(options: UseLeaveOptions = {}) {
   // Fetch leave balance
   const fetchLeaveBalance = useCallback(async () => {
     try {
+      console.log('🔄 Fetching leave balance...');
       const result = await api.get<LeaveBalanceSummary>('/api/leave/my/balance/summary');
-      setLeaveBalance(result);
+      console.log('✅ Leave balance fetched:', result);
+      
+      // Check if the result has the expected structure
+      if (result && typeof result === 'object') {
+        
+        setLeaveBalance(result);
+      } else {
+        console.warn('⚠️ Unexpected balance result format:', result);
+        setLeaveBalance(null);
+      }
     } catch (err) {
-      console.error('Failed to fetch leave balance:', err);
+      console.error('❌ Failed to fetch leave balance:', err);
+      setLeaveBalance(null);
     }
   }, []);
 
@@ -193,62 +205,53 @@ export function useLeaveManagement(options: UseLeaveOptions = {}) {
   const createLeaveApplication = useCallback(async (application: LeaveApplicationCreate): Promise<LeaveApplication> => {
     try {
       const result = await api.post<LeaveApplication>('/api/leave/applications', application);
-      // Refresh the list and balance after creating
-      hasFetched.current = false;
-      await Promise.all([
-        fetchLeaveApplications(employeeId, pagination, filters),
-        fetchLeaveBalance()
-      ]);
+      // Refresh the list after creating (balance doesn't change for drafts)
+      await fetchLeaveApplications(employeeId, pagination, filters);
+      memoizedOnSuccess(result);
       return result;
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Failed to create leave application');
       throw error;
     }
-  }, [employeeId, pagination, filters, fetchLeaveApplications, fetchLeaveBalance]);
+  }, [employeeId, pagination, filters, fetchLeaveApplications]);
 
   // Update leave application
   const updateLeaveApplication = useCallback(async (applicationId: number, updates: LeaveApplicationUpdate): Promise<LeaveApplication> => {
     try {
       const result = await api.put<LeaveApplication>(`/api/leave/applications/${applicationId}`, updates);
-      // Refresh the list and balance after updating
-      hasFetched.current = false;
-      await Promise.all([
-        fetchLeaveApplications(employeeId, pagination, filters),
-        fetchLeaveBalance()
-      ]);
+      // Refresh the list after updating (balance doesn't change for drafts)
+      await fetchLeaveApplications(employeeId, pagination, filters);
+      memoizedOnSuccess(result);
       return result;
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Failed to update leave application');
       throw error;
     }
-  }, [employeeId, pagination, filters, fetchLeaveApplications, fetchLeaveBalance]);
+  }, [employeeId, pagination, filters, fetchLeaveApplications]);
 
   // Delete leave application
   const deleteLeaveApplication = useCallback(async (applicationId: number): Promise<void> => {
     try {
       await api.delete(`/api/leave/applications/${applicationId}`);
-      // Refresh the list and balance after deleting
-      hasFetched.current = false;
-      await Promise.all([
-        fetchLeaveApplications(employeeId, pagination, filters),
-        fetchLeaveBalance()
-      ]);
+      // Refresh the list after deleting (balance doesn't change for drafts)
+      await fetchLeaveApplications(employeeId, pagination, filters);
+      memoizedOnSuccess({ message: "Leave application deleted successfully" });
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Failed to delete leave application');
       throw error;
     }
-  }, [employeeId, pagination, filters, fetchLeaveApplications, fetchLeaveBalance]);
+  }, [employeeId, pagination, filters, fetchLeaveApplications]);
 
   // Cancel leave application
   const cancelLeaveApplication = useCallback(async (applicationId: number): Promise<LeaveApplication> => {
     try {
       const result = await api.post<LeaveApplication>(`/api/leave/applications/${applicationId}/cancel`);
-      // Refresh the list and balance after cancelling
-      hasFetched.current = false;
+      // Refresh the list after cancelling (balance might change if approved application is cancelled)
       await Promise.all([
         fetchLeaveApplications(employeeId, pagination, filters),
         fetchLeaveBalance()
       ]);
+      memoizedOnSuccess(result);
       return result;
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Failed to cancel leave application');
@@ -296,28 +299,40 @@ export function useLeaveManagement(options: UseLeaveOptions = {}) {
 
   // Refresh data
   const refreshData = useCallback(async () => {
-    hasFetched.current = false;
+    console.log('🔄 Refreshing data');
     await fetchLeaveApplications(employeeId, pagination, filters);
   }, [employeeId, pagination, filters, fetchLeaveApplications]);
 
-  // Initial data fetch or when employee changes
+  // Refresh balance only
+  const refreshBalance = useCallback(async () => {
+    console.log('🔄 Refreshing balance only');
+    await fetchLeaveBalance();
+  }, [fetchLeaveBalance]);
+
+  // Initial data fetch
   useEffect(() => {
     console.log('🔄 useLeaveManagement useEffect triggered', { immediate, hasFetched: hasFetched.current, employeeId });
-    if (immediate) {
-      // If employeeId just became available reset the fetched flag to ensure fresh data
+    if (immediate && !hasFetched.current) {
+      // Only fetch on initial load
+      console.log('🔄 Starting initial data fetch...');
+      fetchLeaveApplications(employeeId, pagination, filters);
+      fetchLeaveTypes();
+      fetchLeaveBalance();
+    }
+  }, [immediate, employeeId, fetchLeaveApplications, fetchLeaveTypes, fetchLeaveBalance]);
+
+  // Handle employee changes
+  useEffect(() => {
+    if (employeeId && hasFetched.current) {
+      console.log('🔄 Employee changed, refetching data');
       hasFetched.current = false;
       fetchLeaveApplications(employeeId, pagination, filters);
       fetchLeaveTypes();
       fetchLeaveBalance();
     }
-  }, [immediate, employeeId, pagination, filters, fetchLeaveApplications, fetchLeaveTypes, fetchLeaveBalance]);
+  }, [employeeId]);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      isMounted.current = false;
-    };
-  }, []);
+  // No cleanup needed - React will safely ignore setState on unmounted components
 
   return {
     leaveApplications,
@@ -340,6 +355,7 @@ export function useLeaveManagement(options: UseLeaveOptions = {}) {
     cancelLeaveApplication,
     calculateLeaveDays,
     checkTimesheetConflicts,
-    refreshData
+    refreshData,
+    refreshBalance
   };
 } 

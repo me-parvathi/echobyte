@@ -1220,3 +1220,68 @@ export interface EmergencyContact {
   CreatedAt: string
   UpdatedAt: string
 }
+
+// Notification interfaces
+export interface Notification {
+  id: string;
+  user_id: string;
+  type: string;
+  category: string;
+  title: string;
+  message: string;
+  priority: 'low' | 'normal' | 'high' | 'urgent';
+  metadata?: string;
+  is_read: boolean;
+  read_at?: string;
+  created_at: string;
+  expires_at?: string;
+}
+
+export interface NotificationCreate {
+  type: string;
+  category: string;
+  title: string;
+  message: string;
+  priority: 'low' | 'normal' | 'high' | 'urgent';
+  metadata?: string;
+  expires_at?: string;
+}
+
+export interface NotificationUpdate {
+  is_read?: boolean;
+  read_at?: string;
+}
+
+export interface NotificationListResponse {
+  items: Notification[];
+  total_count: number;
+  page: number;
+  size: number;
+  has_next: boolean;
+  has_previous: boolean;
+}
+
+export interface NotificationFilterParams {
+  type?: string;
+  category?: string;
+  priority?: string;
+  is_read?: boolean;
+  created_after?: string;
+  created_before?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface NotificationStatistics {
+  total_notifications: number;
+  unread_count: number;
+  read_count: number;
+  by_type: Record<string, number>;
+  by_category: Record<string, number>;
+  by_priority: Record<string, number>;
+  recent_activity: {
+    today: number;
+    this_week: number;
+    this_month: number;
+  };
+}

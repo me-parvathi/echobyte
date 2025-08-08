@@ -4,9 +4,14 @@ from typing import List, Optional, Tuple
 from datetime import datetime, timedelta
 from decimal import Decimal
 import random
+import logging
 from . import models, schemas
 from fastapi import HTTPException
 from api.employee.models import Employee
+from core.notification_service import NotificationService
+from api.notifications.schemas import NotificationCreate
+
+logger = logging.getLogger(__name__)
 
 class CourseService:
     
@@ -121,7 +126,7 @@ class EnrollmentService:
         ).filter(models.EmployeeCourse.EmployeeCourseID == enrollment_id).first()
     
     @staticmethod
-    def create_enrollment(
+    async def create_enrollment(
         db: Session, 
         employee_id: int, 
         course_id: int
@@ -157,6 +162,25 @@ class EnrollmentService:
         db.add(enrollment)
         db.commit()
         db.refresh(enrollment)
+        
+        # Send notification for course enrollment
+        try:
+            service = NotificationService(db)
+            await service.create_notification(
+                NotificationCreate(
+                    user_id=str(employee_id),  # Convert to string for UserID
+                    type="learning",
+                    category="workflow",
+                    title="Enrolled in course",
+                    message=f"You have been enrolled in {course.Title}",
+                    priority="normal",
+                    metadata={"course_id": course_id, "course_title": course.Title}
+                )
+            )
+        except Exception as e:
+            logger.error(f"Failed to send enrollment notification for employee {employee_id}, course {course_id}: {str(e)}")
+            # Don't fail the enrollment process if notification fails
+        
         return enrollment
     
     @staticmethod
@@ -197,7 +221,7 @@ class ProgressService:
         return query.all()
     
     @staticmethod
-    def mark_module_completed(
+    async def mark_module_completed(
         db: Session, 
         enrollment_id: int, 
         module_id: int,
@@ -262,13 +286,31 @@ class ProgressService:
         
         print(f"DEBUG: Progress record created, checking course completion")
         
+        # Send notification for module completion
+        try:
+            service = NotificationService(db)
+            await service.create_notification(
+                NotificationCreate(
+                    user_id=str(enrollment.EmployeeID),
+                    type="learning",
+                    category="reminder",
+                    title="Module completed",
+                    message=f"You have completed module: {module.Title}",
+                    priority="normal",
+                    metadata={"course_id": enrollment.CourseID, "module_id": module_id, "action_type": "module_completed"}
+                )
+            )
+        except Exception as e:
+            logger.error(f"Failed to send module completion notification for employee {enrollment.EmployeeID}, module {module_id}: {str(e)}")
+            # Don't fail the module completion process if notification fails
+        
         # Check if course is completed
-        ProgressService._check_course_completion(db, enrollment_id)
+        await ProgressService._check_course_completion(db, enrollment_id)
         
         return progress
     
     @staticmethod
-    def _check_course_completion(db: Session, enrollment_id: int):
+    async def _check_course_completion(db: Session, enrollment_id: int):
         """Check if all modules are completed and update enrollment status"""
         enrollment = db.query(models.EmployeeCourse).filter(
             models.EmployeeCourse.EmployeeCourseID == enrollment_id
@@ -300,6 +342,24 @@ class ProgressService:
             # Award course completion badge
             print(f"DEBUG: Awarding course completion badge for course {enrollment.CourseID}")
             BadgeService.award_course_completion_badge(db, enrollment.EmployeeID, enrollment.CourseID)
+            
+            # Send notification for course completion
+            try:
+                service = NotificationService(db)
+                await service.create_notification(
+                    NotificationCreate(
+                        user_id=str(enrollment.EmployeeID),
+                        type="learning",
+                        category="workflow",
+                        title="Course completed",
+                        message=f"Congratulations! You have completed {enrollment.course.Title if enrollment.course else 'the course'}",
+                        priority="normal",
+                        metadata={"course_id": enrollment.CourseID, "action_type": "completed"}
+                    )
+                )
+            except Exception as e:
+                logger.error(f"Failed to send completion notification for employee {enrollment.EmployeeID}, course {enrollment.CourseID}: {str(e)}")
+                # Don't fail the completion process if notification fails
         else:
             print(f"DEBUG: Course {enrollment.CourseID} not completed yet. Need {total_modules} modules, have {completed_modules}")
     

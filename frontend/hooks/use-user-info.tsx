@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { api } from "@/lib/api"
 import { fetchUserRoles } from "@/lib/role-utils"
 
@@ -174,22 +174,50 @@ export default function useUserInfo(): UseUserInfoReturn {
   const [isManager, setIsManager] = useState(false)
   const [isHR, setIsHR] = useState(false)
   const [isIT, setIsIT] = useState(false)
+  
+  // Ref to track if component is mounted
+  const isMountedRef = useRef(true)
+  // Ref to track if we've already fetched user info
+  const hasFetchedRef = useRef(false)
 
   const fetchUserInfo = async () => {
+    // Don't fetch if already fetched or component is unmounted
+    if (hasFetchedRef.current || !isMountedRef.current) {
+      return
+    }
+
     setLoading(true)
     setError(null)
     
     try {
+      // Check if we have basic auth data first
+      const token = localStorage.getItem('access_token')
+      const userEmail = localStorage.getItem('userEmail')
+      const userType = localStorage.getItem('userType')
+
+      if (!token || !userEmail || !userType) {
+        console.log('No auth data available, skipping user info fetch')
+        setLoading(false)
+        return
+      }
+
+      console.log('Fetching comprehensive user info...')
+      
       // Fetch comprehensive employee profile, roles, and user auth data
-      const [employeeResponse, { roles, userType }, userAuthData] = await Promise.all([
+      const [employeeResponse, { roles, userType: fetchedUserType }, userAuthData] = await Promise.all([
         api.get<ComprehensiveEmployeeResponse>("/api/employees/profile/current/comprehensive"),
         fetchUserRoles(),
         api.get<any>("/api/auth/me")
       ])
       
+      // Check if component is still mounted before updating state
+      if (!isMountedRef.current) {
+        return
+      }
+      
       console.log("Comprehensive employee response:", employeeResponse)
       console.log("User roles:", roles)
-      console.log("User type:", userType)
+      console.log("User type:", fetchedUserType)
       console.log("User auth data:", userAuthData)
       
       // Transform the response to match the expected UserInfo interface
@@ -197,7 +225,7 @@ export default function useUserInfo(): UseUserInfoReturn {
         email: employeeResponse.CompanyEmail,
         name: employeeResponse.FullName,
         department: employeeResponse.Department?.DepartmentName || "Unknown",
-        type: userType,
+        type: fetchedUserType,
         employeeId: employeeResponse.EmployeeID.toString(),
         employeeCode: employeeResponse.EmployeeCode,
         position: employeeResponse.Designation?.DesignationName || "Employee",
@@ -270,18 +298,25 @@ export default function useUserInfo(): UseUserInfoReturn {
       
       // Determine user characteristics based on roles and gender
       setIsFemale(employeeResponse.GenderCode === 'F')
-      setIsManager(userType === 'manager')
-      setIsHR(userType === 'hr')
-      setIsIT(userType === 'it')
+      setIsManager(fetchedUserType === 'manager')
+      setIsHR(fetchedUserType === 'hr')
+      setIsIT(fetchedUserType === 'it')
       
       console.log("User characteristics:", {
         isFemale: employeeResponse.GenderCode === 'F',
-        isManager: userType === 'manager',
-        isHR: userType === 'hr',
-        isIT: userType === 'it'
+        isManager: fetchedUserType === 'manager',
+        isHR: fetchedUserType === 'hr',
+        isIT: fetchedUserType === 'it'
       })
       
+      // Mark as fetched
+      hasFetchedRef.current = true
+      
     } catch (err: any) {
+      if (!isMountedRef.current) {
+        return
+      }
+      
       console.error("❌ Failed to fetch user info:", err)
       setError(err.message || "Failed to fetch user information")
       
@@ -291,16 +326,24 @@ export default function useUserInfo(): UseUserInfoReturn {
       setIsHR(false)
       setIsIT(false)
     } finally {
-      setLoading(false)
+      if (isMountedRef.current) {
+        setLoading(false)
+      }
     }
   }
 
   const refetch = async () => {
+    hasFetchedRef.current = false
     await fetchUserInfo()
   }
 
   useEffect(() => {
+    isMountedRef.current = true
     fetchUserInfo()
+    
+    return () => {
+      isMountedRef.current = false
+    }
   }, [])
 
   return {

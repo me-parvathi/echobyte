@@ -137,6 +137,57 @@ export function isViewableWeek(date: Date): boolean {
   return isCurrentWeek(date) || isPastWeek(date);
 }
 
+// New function to check if a week is within the allowed submission range
+export function isWithinSubmissionRange(date: Date): boolean {
+  const today = new Date();
+  const targetMonth = date.getMonth();
+  const targetYear = date.getFullYear();
+  const currentMonth = today.getMonth();
+  const currentYear = today.getFullYear();
+  
+  // Must be in the same month and year
+  if (targetMonth !== currentMonth || targetYear !== currentYear) {
+    return false;
+  }
+  
+  // Must not be more than 4 weeks back from current week
+  const currentWeekStart = getWeekStartDate(today);
+  const targetWeekStart = getWeekStartDate(date);
+  const weeksDiff = Math.floor((currentWeekStart.getTime() - targetWeekStart.getTime()) / (7 * 24 * 60 * 60 * 1000));
+  
+  return weeksDiff >= 0 && weeksDiff <= 4;
+}
+
+// Get available weeks for selection (current week + up to 4 previous weeks in same month)
+export function getAvailableWeeks(): Array<{ startDate: Date; endDate: Date; label: string; isCurrent: boolean }> {
+  const today = new Date();
+  const currentMonth = today.getMonth();
+  const currentYear = today.getFullYear();
+  const weeks: Array<{ startDate: Date; endDate: Date; label: string; isCurrent: boolean }> = [];
+  
+  // Start from current week
+  let weekStart = getWeekStartDate(today);
+  
+  for (let i = 0; i <= 4; i++) {
+    const weekEnd = getWeekEndDate(weekStart);
+    
+    // Only include weeks in the same month
+    if (weekStart.getMonth() === currentMonth && weekStart.getFullYear() === currentYear) {
+      weeks.push({
+        startDate: weekStart,
+        endDate: weekEnd,
+        label: formatWeekRange(weekStart, weekEnd),
+        isCurrent: i === 0
+      });
+    }
+    
+    // Move to previous week
+    weekStart = addDays(weekStart, -7);
+  }
+  
+  return weeks.reverse(); // Return in chronological order
+}
+
 // Format utilities
 export function formatDate(date: Date): string {
   return format(date, 'yyyy-MM-dd');

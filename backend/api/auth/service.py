@@ -82,17 +82,24 @@ class AuthService:
         ).first()
         
         if not user:
-            raise HTTPException(
+            # Create custom exception with headers to indicate specific error type
+            from fastapi import HTTPException, status
+            exception = HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid username or password"
             )
+            exception.headers = {"X-Auth-Error": "username_not_found"}
+            raise exception
         
         # Verify password
         if not AuthService.verify_password(login_request.password, user.Password):
-            raise HTTPException(
+            # Create custom exception with headers to indicate specific error type
+            exception = HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid username or password"
             )
+            exception.headers = {"X-Auth-Error": "password_incorrect"}
+            raise exception
         
         # Check if employee has been terminated
         try:

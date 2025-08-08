@@ -179,8 +179,8 @@ export function useTeamsAndDepartments(options: UseTeamsOptions = {}) {
     try {
       // Fetch teams and departments in parallel
       const [teamsResult, departmentsResult] = await Promise.all([
-        api.get<TeamListResponse>('/teams/'),
-        api.get<any>('/departments/')
+        api.get<TeamListResponse>('/teams'),
+        api.get<any>('/departments')
       ]);
       
       // Only update state if component is still mounted

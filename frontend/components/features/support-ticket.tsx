@@ -187,13 +187,26 @@ export default function SupportTicket() {
         title: "Success",
         description: "Ticket created successfully",
       })
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to create ticket:", error)
-      toast({
-        title: "Error",
-        description: "Failed to create ticket. Please try again.",
-        variant: "destructive"
-      })
+      
+      // Check if this is a validation error
+      if (error.isValidationError && error.validationErrors && error.validationErrors.length > 0) {
+        // Display specific validation errors
+        const validationMessage = error.validationErrors.join('\n');
+        toast({
+          title: "Validation Error",
+          description: validationMessage,
+          variant: "destructive"
+        })
+      } else {
+        // Display generic error for non-validation errors
+        toast({
+          title: "Error",
+          description: error.message || "Failed to create ticket. Please try again.",
+          variant: "destructive"
+        })
+      }
     } finally {
       setIsSubmitting(false)
     }

@@ -6,7 +6,15 @@ interface ApiResponse<T = any> {
   
   interface ApiError {
     detail: string;
-    status_code: number;
+    status_code?: number;
+    errors?: Array<{
+      type: string;
+      loc: (string | number)[];
+      msg: string;
+      input: any;
+      ctx?: any;
+    }>;
+    path?: string;
   }
 
   interface TokenResponse {
@@ -109,15 +117,59 @@ interface ApiResponse<T = any> {
     private async handleResponse<T>(response: Response): Promise<T> {
       if (!response.ok) {
         let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        let errorCode = response.status;
+        let isValidationError = false;
+        let validationErrors: string[] = [];
         
         try {
           const errorData: ApiError = await response.json();
           errorMessage = errorData.detail || errorMessage;
+          
+          // Check if this is a validation error (422 status)
+          if (response.status === 422 && errorData.errors && Array.isArray(errorData.errors)) {
+            isValidationError = true;
+            
+            // Extract validation errors and create descriptive messages
+            validationErrors = errorData.errors.map(error => {
+              // Get the field name from the location array
+              const rawField = error.loc.length > 0 ? error.loc[error.loc.length - 1] : 'Unknown field';
+              const fieldName: string = typeof rawField === 'string' ? rawField : String(rawField);
+
+              // Capitalize the field name for better display
+              const displayFieldName = fieldName.charAt(0).toUpperCase() + fieldName.slice(1);
+              
+              return `${displayFieldName}: ${error.msg}`;
+            });
+            
+            // Create a more descriptive error message
+            if (validationErrors.length > 0) {
+              errorMessage = validationErrors.join('; ');
+            }
+          }
         } catch {
           // If parsing fails, use the default message
         }
   
-        throw new Error(errorMessage);
+        // Create a custom error with additional context
+        const customError = new Error(errorMessage) as any;
+        customError.status = errorCode;
+        customError.isAuthError = errorCode === 401 || errorCode === 403;
+        customError.isNetworkError = errorCode >= 500;
+        customError.isDatabaseError = errorCode === 500 && (
+          errorMessage.toLowerCase().includes('database') || 
+          errorMessage.toLowerCase().includes('connection') ||
+          errorMessage.toLowerCase().includes('sql')
+        );
+        customError.isValidationError = isValidationError;
+        customError.validationErrors = validationErrors;
+        
+        // Check for specific auth error types from headers
+        const authErrorType = response.headers.get('X-Auth-Error');
+        if (authErrorType) {
+          customError.authErrorType = authErrorType;
+        }
+        
+        throw customError;
       }
   
       const contentType = response.headers.get('content-type');
@@ -175,8 +227,21 @@ interface ApiResponse<T = any> {
           }
         }
         
+        // If we get a 500 (database error) and this is the first attempt, retry once
+        if (response.status === 500 && retryCount === 0) {
+          console.log('🔄 Got 500, attempting retry for database connection...');
+          // Wait 2 seconds before retrying
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          return this.request<T>(endpoint, options, retryCount + 1);
+        }
+        
         return await this.handleResponse<T>(response);
-      } catch (error) {
+      } catch (error: any) {
+        // Suppress expected abort errors (e.g., when navigating away or cancelling duplicate requests)
+        if (error && error.name === 'AbortError') {
+          console.log(`⏹️ Request aborted (${endpoint})`);
+          throw error; // propagate so callers can handle if needed
+        }
         console.error(`API Error (${endpoint}):`, error);
         throw error;
       }

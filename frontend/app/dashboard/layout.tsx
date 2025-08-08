@@ -4,7 +4,8 @@ import { SidebarProvider } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import DashboardHeader from "@/components/dashboard-header"
 import useUserInfo from "@/hooks/use-user-info"
-import { Toaster } from "@/components/ui/toaster" // Add this import
+import { Toaster } from "@/components/ui/toaster"
+import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { LayoutDashboard, Clock, Calendar, TicketIcon, Briefcase, BookOpen, GraduationCap, Users, Search, User, Zap, Settings, CheckSquare, BarChart3, Award, UserPlus, FileText, HardDrive, Shield, Server, Globe } from "lucide-react"
 import { Loader2 } from "lucide-react"
 import React from "react"
@@ -19,13 +20,12 @@ interface SidebarItem {
   icon: React.ComponentType<{ className?: string }>
 }
 
-export default function DashboardLayout({ children }: DashboardLayoutProps) {
+function DashboardLayoutContent({ children }: DashboardLayoutProps) {
   const { userInfo, loading } = useUserInfo()
 
   const getSidebarItems = (userType: string): SidebarItem[] => {
     const baseItems = [
       { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { id: "applications", label: "Applications", icon: Globe },
       { id: "timesheet", label: "Timesheet", icon: Clock },
       { id: "leave", label: "Leave", icon: Calendar },
       { id: "feedback", label: "Feedback", icon: TicketIcon },
@@ -44,7 +44,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       ...baseItems,
       { id: "approvals", label: "Approvals", icon: CheckSquare },
       { id: "reports", label: "Team Reports", icon: BarChart3 },
-      { id: "performance", label: "Performance", icon: Award },
     ]
 
     const hrItems = [
@@ -98,5 +97,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       </div>
       <Toaster />
     </SidebarProvider>
+  )
+}
+
+export default function DashboardLayout({ children }: DashboardLayoutProps) {
+  return (
+    <ProtectedRoute requireAuth={true}>
+      <DashboardLayoutContent>{children}</DashboardLayoutContent>
+    </ProtectedRoute>
   )
 } 

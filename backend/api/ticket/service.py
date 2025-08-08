@@ -3,13 +3,141 @@ from sqlalchemy import and_, or_, func
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 import uuid
+import json
 from . import models, schemas
 from fastapi import HTTPException, status
 from api.employee.models import Employee
 from api.asset.models import Asset
 from core.pagination import paginate_query
+from core.notification_service import NotificationService
+from api.notifications.schemas import NotificationCreate
 
 class TicketService:
+    
+    @staticmethod
+    def get_it_employees(db: Session) -> List[Employee]:
+        """Get all IT employees who should be notified of new tickets"""
+        from api.auth.models import EmployeeRole, Role
+        
+        # Get IT Support role
+        it_role = db.query(Role).filter(
+            Role.RoleName == "IT Support",
+            Role.IsActive == True
+        ).first()
+        
+        if not it_role:
+            # Fallback: look for employees with IT-related designations
+            it_employees = db.query(Employee).join(
+                Employee.designation
+            ).filter(
+                Employee.IsActive == True,
+                or_(
+                    Employee.designation.has(DesignationName=func.like('%IT%')),
+                    Employee.designation.has(DesignationName=func.like('%Technology%')),
+                    Employee.designation.has(DesignationName=func.like('%System%')),
+                    Employee.designation.has(DesignationName=func.like('%Support%'))
+                )
+            ).all()
+            return it_employees
+        
+        # Get employees with IT Support role
+        it_employees = db.query(Employee).join(
+            EmployeeRole, Employee.EmployeeID == EmployeeRole.EmployeeID
+        ).filter(
+            Employee.IsActive == True,
+            EmployeeRole.RoleID == it_role.RoleID,
+            EmployeeRole.IsActive == True
+        ).all()
+        
+        return it_employees
+    
+    @staticmethod
+    def send_ticket_notifications(db: Session, ticket: models.Ticket, opened_by_employee: Employee):
+        """Send notifications to IT employees about a new ticket"""
+        try:
+            # Get IT employees
+            it_employees = TicketService.get_it_employees(db)
+            
+            if not it_employees:
+                print("No IT employees found to notify")
+                return
+            
+            # Create notification service
+            notification_service = NotificationService(db)
+            
+            # Create notification for each IT employee
+            for it_employee in it_employees:
+                # Skip if the ticket was opened by an IT employee
+                if it_employee.EmployeeID == opened_by_employee.EmployeeID:
+                    continue
+                
+                # Create notification data
+                notification_data = NotificationCreate(
+                    user_id=it_employee.UserID,
+                    type="ticket_created",
+                    category="it_support",
+                    title=f"New Ticket: {ticket.TicketNumber}",
+                    message=f"New ticket '{ticket.Subject}' has been created by {opened_by_employee.FirstName} {opened_by_employee.LastName}. Priority: {ticket.PriorityCode}",
+                    priority="medium",
+                    metadata=json.dumps({
+                        "ticket_id": ticket.TicketID,
+                        "ticket_number": ticket.TicketNumber,
+                        "opened_by": {
+                            "id": opened_by_employee.EmployeeID,
+                            "name": f"{opened_by_employee.FirstName} {opened_by_employee.LastName}",
+                            "email": opened_by_employee.CompanyEmail
+                        },
+                        "category": ticket.CategoryID,
+                        "priority": ticket.PriorityCode,
+                        "asset_id": ticket.AssetID
+                    }),
+                    expires_at=datetime.utcnow() + timedelta(days=7)  # Expire after 7 days
+                )
+                
+                # Create notification
+                notification_service.create_notification(notification_data)
+                
+        except Exception as e:
+            # Log error but don't fail the ticket creation
+            print(f"Error sending ticket notifications: {str(e)}")
+    
+    @staticmethod
+    def send_assignment_notification(db: Session, ticket: models.Ticket, assigned_to_employee: Employee, assigned_by_employee: Employee):
+        """Send notification to employee when ticket is assigned to them"""
+        try:
+            # Create notification service
+            notification_service = NotificationService(db)
+            
+            # Create notification data
+            notification_data = NotificationCreate(
+                user_id=assigned_to_employee.UserID,
+                type="ticket_assigned",
+                category="it_support",
+                title=f"Ticket Assigned: {ticket.TicketNumber}",
+                message=f"Ticket '{ticket.Subject}' has been assigned to you by {assigned_by_employee.FirstName} {assigned_by_employee.LastName}. Priority: {ticket.PriorityCode}",
+                priority="high",
+                metadata=json.dumps({
+                    "ticket_id": ticket.TicketID,
+                    "ticket_number": ticket.TicketNumber,
+                    "assigned_by": {
+                        "id": assigned_by_employee.EmployeeID,
+                        "name": f"{assigned_by_employee.FirstName} {assigned_by_employee.LastName}",
+                        "email": assigned_by_employee.CompanyEmail
+                    },
+                    "category": ticket.CategoryID,
+                    "priority": ticket.PriorityCode,
+                    "asset_id": ticket.AssetID,
+                    "due_date": ticket.DueDate.isoformat() if ticket.DueDate else None
+                }),
+                expires_at=datetime.utcnow() + timedelta(days=3)  # Expire after 3 days
+            )
+            
+            # Create notification
+            notification_service.create_notification(notification_data)
+            
+        except Exception as e:
+            # Log error but don't fail the ticket update
+            print(f"Error sending assignment notification: {str(e)}")
     
     @staticmethod
     def validate_priority_code(db: Session, priority_code: str) -> bool:
@@ -240,6 +368,11 @@ class TicketService:
             None, ticket_number, "Ticket created"
         )
         
+        # Send notifications
+        opened_by_employee = db.query(Employee).filter(Employee.EmployeeID == opened_by_id).first()
+        if opened_by_employee:
+            TicketService.send_ticket_notifications(db, db_ticket, opened_by_employee)
+        
         return db_ticket
     
     @staticmethod
@@ -336,6 +469,13 @@ class TicketService:
                 db, ticket_id, db_ticket.OpenedByID, "Assignment",
                 None, str(update_data['AssignedToID']), "Ticket assigned"
             )
+            
+            # Send assignment notification
+            assigned_to_employee = db.query(Employee).filter(Employee.EmployeeID == update_data['AssignedToID']).first()
+            assigned_by_employee = db.query(Employee).filter(Employee.EmployeeID == db_ticket.OpenedByID).first()
+            
+            if assigned_to_employee and assigned_by_employee:
+                TicketService.send_assignment_notification(db, db_ticket, assigned_to_employee, assigned_by_employee)
         
         return db_ticket
     

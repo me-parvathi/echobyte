@@ -65,6 +65,9 @@ class CommentService:
         # Create comment
         comment = self.repository.create_comment_for_entity(db, comment_data, entity_type, entity_id, commenter_id)
         
+        # Create notifications for relevant users
+        self._create_comment_notifications(db, entity_type, entity_id, comment, commenter_id)
+        
         return self._to_response(comment)
     
     def update_comment(self, db: Session, comment_id: int, 
@@ -104,6 +107,114 @@ class CommentService:
             )
         
         return self.repository.delete(db, comment_id)
+    
+    def _create_comment_notifications(self, db: Session, entity_type: str, entity_id: int, comment: Comment, commenter_id: int):
+        """Create notifications for relevant users when a comment is added"""
+        try:
+            import uuid
+            from datetime import datetime, timedelta
+            from core.models import Notification, NotificationDelivery
+            
+            if entity_type == "LeaveApplication":
+                # Get the leave application
+                leave_app = db.query(LeaveApplication).filter(
+                    LeaveApplication.LeaveApplicationID == entity_id
+                ).first()
+                
+                if not leave_app:
+                    return
+                
+                # Get the employee who applied for leave
+                from api.employee.models import Employee
+                applicant = db.query(Employee).filter(
+                    Employee.EmployeeID == leave_app.EmployeeID
+                ).first()
+                
+                if not applicant:
+                    return
+                
+                # Get the commenter info
+                commenter = db.query(Employee).filter(
+                    Employee.EmployeeID == commenter_id
+                ).first()
+                
+                commenter_name = f"{commenter.FirstName} {commenter.LastName}" if commenter else "Someone"
+                
+                # Create notification for the leave applicant (if they're not the commenter)
+                if applicant.EmployeeID != commenter_id:
+                    notification = Notification(
+                        Id=str(uuid.uuid4()),
+                        UserID=applicant.UserID,
+                        Type="comment",
+                        Category="leave",
+                        Title="New comment on your leave application",
+                        Message=f"{commenter_name} commented: {comment.CommentText[:100]}{'...' if len(comment.CommentText) > 100 else ''}",
+                        Priority="normal",
+                        Metadata=f"leave_application:{entity_id}",
+                        ExpiresAt=datetime.utcnow() + timedelta(days=30),
+                        IsRead=False,
+                        CreatedAt=datetime.utcnow()
+                    )
+                    
+                    db.add(notification)
+                    
+                    # Create desktop delivery record
+                    delivery = NotificationDelivery(
+                        Id=str(uuid.uuid4()),
+                        NotificationID=notification.Id,
+                        Channel='desktop',
+                        Status='pending',
+                        RetryCount=0,
+                        MaxRetries=3,
+                        CreatedAt=datetime.utcnow()
+                    )
+                    
+                    db.add(delivery)
+                
+                # Create notification for the manager (if they exist and are not the commenter)
+                if leave_app.ManagerID and leave_app.ManagerID != commenter_id:
+                    manager = db.query(Employee).filter(
+                        Employee.EmployeeID == leave_app.ManagerID
+                    ).first()
+                    
+                    if manager:
+                        notification = Notification(
+                            Id=str(uuid.uuid4()),
+                            UserID=manager.UserID,
+                            Type="comment",
+                            Category="leave",
+                            Title="New comment on leave application",
+                            Message=f"{commenter_name} commented on {applicant.FirstName}'s leave application: {comment.CommentText[:100]}{'...' if len(comment.CommentText) > 100 else ''}",
+                            Priority="normal",
+                            Metadata=f"leave_application:{entity_id}",
+                            ExpiresAt=datetime.utcnow() + timedelta(days=30),
+                            IsRead=False,
+                            CreatedAt=datetime.utcnow()
+                        )
+                        
+                        db.add(notification)
+                        
+                        # Create desktop delivery record
+                        delivery = NotificationDelivery(
+                            Id=str(uuid.uuid4()),
+                            NotificationID=notification.Id,
+                            Channel='desktop',
+                            Status='pending',
+                            RetryCount=0,
+                            MaxRetries=3,
+                            CreatedAt=datetime.utcnow()
+                        )
+                        
+                        db.add(delivery)
+                
+                # Commit all notifications
+                db.commit()
+                        
+        except Exception as e:
+            # Log the error but don't fail the comment creation
+            print(f"Failed to create comment notifications: {e}")
+            # Rollback the notification creation but keep the comment
+            db.rollback()
     
     def _to_response(self, comment: Comment) -> CommentResponse:
         """Convert comment model to response schema"""
